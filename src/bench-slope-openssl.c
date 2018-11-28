@@ -59,7 +59,7 @@ struct bench_cipher_mode
   const char *mode_name;
 
   const EVP_CIPHER *algo;
-  EVP_CIPHER_CTX hd;
+  EVP_CIPHER_CTX *hd;
   int init;
 };
 
@@ -93,9 +93,10 @@ static int
 bench_crypt_init (struct bench_obj *obj, int encrypt)
 {
   struct bench_cipher_mode *mode = obj->priv;
-  EVP_CIPHER_CTX *hd;
   int keylen;
   int ret = -1;
+
+  mode->hd = EVP_CIPHER_CTX_new();
 
   obj->min_bufsize = BUF_START_SIZE;
   obj->max_bufsize = BUF_END_SIZE;
@@ -111,9 +112,9 @@ bench_crypt_init (struct bench_obj *obj, int encrypt)
 	key[i] = 0x33 ^ (11 - i);
 
       if (encrypt)
-	ret = EVP_EncryptInit_ex(&mode->hd, mode->algo, NULL, key, NULL);
+	ret = EVP_EncryptInit_ex(mode->hd, mode->algo, NULL, key, NULL);
       else
-	ret = EVP_DecryptInit_ex(&mode->hd, mode->algo, NULL, key, NULL);
+	ret = EVP_DecryptInit_ex(mode->hd, mode->algo, NULL, key, NULL);
 
       if (ret)
 	mode->init = 1;
@@ -146,7 +147,9 @@ bench_crypt_free (struct bench_obj *obj)
 {
   struct bench_cipher_mode *mode = obj->priv;
 
-  EVP_CIPHER_CTX_cleanup(&mode->hd);
+  EVP_CIPHER_CTX_cleanup(mode->hd);
+  EVP_CIPHER_CTX_free(mode->hd);
+  mode->hd = NULL;
 }
 
 static void
@@ -157,10 +160,10 @@ bench_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
   unsigned int tmplen;
   char iv[16] = {};
 
-  EVP_EncryptInit_ex(&mode->hd, NULL, NULL, NULL, iv);
-  EVP_EncryptUpdate(&mode->hd, buf, &outlen, buf, buflen);
+  EVP_EncryptInit_ex(mode->hd, NULL, NULL, NULL, iv);
+  EVP_EncryptUpdate(mode->hd, buf, &outlen, buf, buflen);
   if (outlen != buflen)
-    EVP_EncryptFinal_ex(&mode->hd, buf + outlen, &tmplen);
+    EVP_EncryptFinal_ex(mode->hd, buf + outlen, &tmplen);
 }
 
 static void
@@ -171,10 +174,10 @@ bench_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
   unsigned int tmplen;
   char iv[16] = {};
 
-  EVP_DecryptInit_ex(&mode->hd, NULL, NULL, NULL, iv);
-  EVP_DecryptUpdate(&mode->hd, buf, &outlen, buf, buflen);
+  EVP_DecryptInit_ex(mode->hd, NULL, NULL, NULL, iv);
+  EVP_DecryptUpdate(mode->hd, buf, &outlen, buf, buflen);
   if (outlen != buflen)
-    EVP_DecryptFinal_ex(&mode->hd, buf + outlen, &tmplen);
+    EVP_DecryptFinal_ex(mode->hd, buf + outlen, &tmplen);
 }
 
 static void
@@ -185,10 +188,10 @@ bench_authenticate_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
   unsigned int tmplen;
   char iv[16] = {};
 
-  EVP_EncryptInit_ex(&mode->hd, NULL, NULL, NULL, iv);
-  EVP_EncryptUpdate(&mode->hd, NULL, &outlen, buf, buflen);
+  EVP_EncryptInit_ex(mode->hd, NULL, NULL, NULL, iv);
+  EVP_EncryptUpdate(mode->hd, NULL, &outlen, buf, buflen);
   if (outlen != buflen)
-    EVP_EncryptFinal_ex(&mode->hd, buf, &tmplen);
+    EVP_EncryptFinal_ex(mode->hd, buf, &tmplen);
 }
 
 static struct bench_ops encrypt_ops = {
