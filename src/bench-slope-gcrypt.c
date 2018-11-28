@@ -58,6 +58,7 @@ struct bench_cipher_mode
   struct bench_ops *ops;
 
   int algo;
+  gcry_cipher_hd_t hd;
 };
 
 
@@ -106,7 +107,7 @@ bench_encrypt_init (struct bench_obj *obj)
       exit (1);
     }
 
-  obj->priv = hd;
+  mode->hd = hd;
 
   return 0;
 }
@@ -114,7 +115,8 @@ bench_encrypt_init (struct bench_obj *obj)
 static void
 bench_encrypt_free (struct bench_obj *obj)
 {
-  gcry_cipher_hd_t hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  gcry_cipher_hd_t hd = mode->hd;
 
   gcry_cipher_close (hd);
 }
@@ -122,7 +124,8 @@ bench_encrypt_free (struct bench_obj *obj)
 static void
 bench_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  gcry_cipher_hd_t hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  gcry_cipher_hd_t hd = mode->hd;
   int err;
 
   err = gcry_cipher_encrypt (hd, buf, buflen, buf, buflen);
@@ -138,7 +141,8 @@ bench_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 static void
 bench_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  gcry_cipher_hd_t hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  gcry_cipher_hd_t hd = mode->hd;
   int err;
 
   err = gcry_cipher_decrypt (hd, buf, buflen, buf, buflen);
@@ -212,7 +216,7 @@ bench_xts_encrypt_init (struct bench_obj *obj)
       exit (1);
     }
 
-  obj->priv = hd;
+  mode->hd = hd;
 
   return 0;
 }
@@ -220,7 +224,8 @@ bench_xts_encrypt_init (struct bench_obj *obj)
 static void
 bench_xts_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  gcry_cipher_hd_t hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  gcry_cipher_hd_t hd = mode->hd;
   unsigned int pos;
   static const char tweak[16] = { 0xff, 0xff, 0xfe, };
   size_t sectorlen = obj->step_size;
@@ -247,7 +252,8 @@ bench_xts_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 static void
 bench_xts_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  gcry_cipher_hd_t hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  gcry_cipher_hd_t hd = mode->hd;
   unsigned int pos;
   static const char tweak[16] = { 0xff, 0xff, 0xfe, };
   size_t sectorlen = obj->step_size;
@@ -288,7 +294,8 @@ static struct bench_ops xts_decrypt_ops = {
 static void
 bench_ccm_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  gcry_cipher_hd_t hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  gcry_cipher_hd_t hd = mode->hd;
   int err;
   char tag[8];
   char nonce[11] = { 0x80, 0x01, };
@@ -332,7 +339,8 @@ bench_ccm_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 static void
 bench_ccm_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  gcry_cipher_hd_t hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  gcry_cipher_hd_t hd = mode->hd;
   int err;
   char tag[8] = { 0, };
   char nonce[11] = { 0x80, 0x01, };
@@ -379,7 +387,8 @@ static void
 bench_ccm_authenticate_do_bench (struct bench_obj *obj, void *buf,
 				 size_t buflen)
 {
-  gcry_cipher_hd_t hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  gcry_cipher_hd_t hd = mode->hd;
   int err;
   char tag[8] = { 0, };
   char nonce[11] = { 0x80, 0x01, };
@@ -453,7 +462,8 @@ static void
 bench_aead_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen,
 			     const char *nonce, size_t noncelen)
 {
-  gcry_cipher_hd_t hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  gcry_cipher_hd_t hd = mode->hd;
   int err;
   char tag[16];
 
@@ -483,7 +493,8 @@ static void
 bench_aead_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen,
 			     const char *nonce, size_t noncelen)
 {
-  gcry_cipher_hd_t hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  gcry_cipher_hd_t hd = mode->hd;
   int err;
   char tag[16] = { 0, };
 
@@ -516,7 +527,8 @@ bench_aead_authenticate_do_bench (struct bench_obj *obj, void *buf,
 				  size_t buflen, const char *nonce,
 				  size_t noncelen)
 {
-  gcry_cipher_hd_t hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  gcry_cipher_hd_t hd = mode->hd;
   int err;
   char tag[16] = { 0, };
   char data = 0xff;
@@ -735,6 +747,7 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   struct bench_cipher_mode mode = *pmode;
   struct bench_obj obj = { 0 };
   double result;
+  double bench_ghz;
   unsigned int blklen;
 
   mode.algo = algo;
@@ -781,9 +794,9 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj);
+  result = do_slope_benchmark (&obj, &bench_ghz);
 
-  bench_print_result (result);
+  bench_print_result (result, bench_ghz);
 }
 
 
@@ -837,6 +850,7 @@ struct bench_hash_mode
   struct bench_ops *ops;
 
   int algo;
+  gcry_md_hd_t hd;
 };
 
 
@@ -859,7 +873,7 @@ bench_hash_init (struct bench_obj *obj)
       exit (1);
     }
 
-  obj->priv = hd;
+  mode->hd = hd;
 
   return 0;
 }
@@ -867,7 +881,8 @@ bench_hash_init (struct bench_obj *obj)
 static void
 bench_hash_free (struct bench_obj *obj)
 {
-  gcry_md_hd_t hd = obj->priv;
+  struct bench_hash_mode *mode = obj->priv;
+  gcry_md_hd_t hd = mode->hd;
 
   gcry_md_close (hd);
 }
@@ -875,7 +890,8 @@ bench_hash_free (struct bench_obj *obj)
 static void
 bench_hash_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  gcry_md_hd_t hd = obj->priv;
+  struct bench_hash_mode *mode = obj->priv;
+  gcry_md_hd_t hd = mode->hd;
 
   gcry_md_reset (hd);
   gcry_md_write (hd, buf, buflen);
@@ -901,6 +917,7 @@ hash_bench_one (int algo, struct bench_hash_mode *pmode)
   struct bench_hash_mode mode = *pmode;
   struct bench_obj obj = { 0 };
   double result;
+  double bench_ghz;
 
   mode.algo = algo;
 
@@ -912,9 +929,9 @@ hash_bench_one (int algo, struct bench_hash_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj);
+  result = do_slope_benchmark (&obj, &bench_ghz);
 
-  bench_print_result (result);
+  bench_print_result (result, bench_ghz);
 }
 
 static void
@@ -962,6 +979,7 @@ struct bench_mac_mode
   struct bench_ops *ops;
 
   int algo;
+  gcry_mac_hd_t hd;
 };
 
 
@@ -1020,7 +1038,7 @@ bench_mac_init (struct bench_obj *obj)
       break;
     }
 
-  obj->priv = hd;
+  mode->hd = hd;
 
   free (key);
   return 0;
@@ -1029,7 +1047,8 @@ bench_mac_init (struct bench_obj *obj)
 static void
 bench_mac_free (struct bench_obj *obj)
 {
-  gcry_mac_hd_t hd = obj->priv;
+  struct bench_mac_mode *mode = obj->priv;
+  gcry_mac_hd_t hd = mode->hd;
 
   gcry_mac_close (hd);
 }
@@ -1037,7 +1056,8 @@ bench_mac_free (struct bench_obj *obj)
 static void
 bench_mac_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  gcry_mac_hd_t hd = obj->priv;
+  struct bench_mac_mode *mode = obj->priv;
+  gcry_mac_hd_t hd = mode->hd;
   size_t bs;
   char b;
 
@@ -1066,6 +1086,7 @@ mac_bench_one (int algo, struct bench_mac_mode *pmode)
   struct bench_mac_mode mode = *pmode;
   struct bench_obj obj = { 0 };
   double result;
+  double bench_ghz;
 
   mode.algo = algo;
 
@@ -1077,9 +1098,9 @@ mac_bench_one (int algo, struct bench_mac_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj);
+  result = do_slope_benchmark (&obj, &bench_ghz);
 
-  bench_print_result (result);
+  bench_print_result (result, bench_ghz);
 }
 
 static void
@@ -1180,9 +1201,11 @@ kdf_bench_one (int algo, int subalgo)
   struct bench_obj obj = { 0 };
   double nsecs_per_iteration;
   double cycles_per_iteration;
+  double bench_ghz;
   char algo_name[32];
   char nsecpiter_buf[16];
   char cpiter_buf[16];
+  char mhz_buf[16];
 
   mode.algo = algo;
   mode.subalgo = subalgo;
@@ -1216,31 +1239,44 @@ kdf_bench_one (int algo, int subalgo)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  nsecs_per_iteration = do_slope_benchmark (&obj);
+  nsecs_per_iteration = do_slope_benchmark (&obj, &bench_ghz);
 
   strcpy(cpiter_buf, settings.csv_mode ? "" : "-");
 
   double_to_str (nsecpiter_buf, sizeof (nsecpiter_buf), nsecs_per_iteration);
 
   /* If user didn't provide CPU speed, we cannot show cycles/iter results.  */
-  if (settings.cpu_ghz > 0.0)
+  if (bench_ghz > 0.0)
     {
-      cycles_per_iteration = nsecs_per_iteration * settings.cpu_ghz;
+      cycles_per_iteration = nsecs_per_iteration * bench_ghz;
       double_to_str (cpiter_buf, sizeof (cpiter_buf), cycles_per_iteration);
+      double_to_str (mhz_buf, sizeof (mhz_buf), bench_ghz * 1000);
     }
 
   if (settings.csv_mode)
     {
-      printf ("%s,%s,%s,,,,,,,,,%s,ns/iter,%s,c/iter\n",
-	      settings.current_section_name,
-	      settings.current_algo_name ? settings.current_algo_name : "",
-	      settings.current_mode_name ? settings.current_mode_name : "",
-	      nsecpiter_buf,
-	      cpiter_buf);
+      if (settings.auto_ghz)
+        printf ("%s,%s,%s,,,,,,,,,%s,ns/iter,%s,c/iter,%s,Mhz\n",
+                settings.current_section_name,
+                settings.current_algo_name ? settings.current_algo_name : "",
+                settings.current_mode_name ? settings.current_mode_name : "",
+                nsecpiter_buf,
+                cpiter_buf,
+                mhz_buf);
+      else
+        printf ("%s,%s,%s,,,,,,,,,%s,ns/iter,%s,c/iter\n",
+                settings.current_section_name,
+                settings.current_algo_name ? settings.current_algo_name : "",
+                settings.current_mode_name ? settings.current_mode_name : "",
+                nsecpiter_buf,
+                cpiter_buf);
     }
   else
     {
-      printf ("%14s %13s\n", nsecpiter_buf, cpiter_buf);
+      if (settings.auto_ghz)
+        printf ("%14s %13s %9s\n", nsecpiter_buf, cpiter_buf, mhz_buf);
+      else
+        printf ("%14s %13s\n", nsecpiter_buf, cpiter_buf);
     }
 }
 
@@ -1255,7 +1291,10 @@ kdf_bench (char **argv, int argc)
   if (!settings.csv_mode)
     {
       printf (" %-*s | ", 24, "");
-      printf ("%14s %13s\n", "nanosecs/iter", "cycles/iter");
+      if (settings.auto_ghz)
+        printf ("%14s %13s %9s\n", "nanosecs/iter", "cycles/iter", "auto Mhz");
+      else
+        printf ("%14s %13s\n", "nanosecs/iter", "cycles/iter");
     }
 
   if (argv && argc)

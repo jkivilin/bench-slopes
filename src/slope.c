@@ -164,8 +164,8 @@ get_time_nsec_diff (struct nsec_time *start, struct nsec_time *end)
 #ifdef NO_GET_NSEC_TIME
 
 
-double
-do_slope_benchmark (struct bench_obj *obj)
+static double
+slope_benchmark (struct bench_obj *obj)
 {
 #warning "no high resolution timer found!"
   return 0.0;
@@ -255,11 +255,14 @@ do_bench_obj_measurement (struct bench_obj *obj, void *buffer, size_t buflen,
 			  double *measurement_raw,
 			  unsigned int loop_iterations)
 {
-  const unsigned int num_repetitions = settings.num_measurement_repetitions;
+  unsigned int num_repetitions = obj->num_measurement_repetitions;
   const bench_do_run_t do_run = obj->ops->do_run;
   struct nsec_time start, end;
   unsigned int rep, loop;
   double res;
+
+  if (num_repetitions == 0)
+    num_repetitions = settings.num_measurement_repetitions;
 
   if (num_repetitions < 1 || loop_iterations < 1)
     return 0.0;
@@ -325,10 +328,10 @@ adjust_loop_iterations_to_timer_accuracy (struct bench_obj *obj, void *buffer,
 
 
 /* Benchmark and return linear regression slope in nanoseconds per byte.  */
-double
-do_slope_benchmark (struct bench_obj *obj)
+static double
+slope_benchmark (struct bench_obj *obj)
 {
-  const unsigned int num_repetitions = settings.num_measurement_repetitions;
+  unsigned int num_repetitions = obj->num_measurement_repetitions;
   unsigned int num_measurements;
   double *measurements = NULL;
   double *measurement_raw = NULL;
@@ -338,6 +341,9 @@ do_slope_benchmark (struct bench_obj *obj)
   unsigned char *buffer;
   size_t cur_bufsize;
   int err;
+
+  if (num_repetitions == 0)
+    num_repetitions = settings.num_measurement_repetitions;
 
   err = obj->ops->initialize (obj);
   if (err < 0)
@@ -411,6 +417,119 @@ err_free:
 #endif /* !NO_GET_NSEC_TIME */
 
 
+/********************************************* CPU frequency auto-detection. */
+
+static int
+auto_ghz_init (struct bench_obj *obj)
+{
+  obj->min_bufsize = 16;
+  obj->max_bufsize = 64 + obj->min_bufsize;
+  obj->step_size = 8;
+  obj->num_measurement_repetitions = 16;
+
+  return 0;
+}
+
+static void
+auto_ghz_free (struct bench_obj *obj)
+{
+  (void)obj;
+}
+
+static void
+auto_ghz_bench (struct bench_obj *obj, void *buf, size_t buflen)
+{
+  (void)obj;
+  (void)buf;
+
+  buflen *= 1024;
+
+  /* Turbo frequency detection benchmark. Without CPU turbo-boost, this
+   * function will give cycles/iteration result 1024.0 on high-end CPUs.
+   * With turbo, result will be less and can be used detect turbo-clock. */
+
+  do
+    {
+      /* Use memory barrier to prevent compiler from optimizing this loop
+       * away. */
+
+      asm volatile ("":::"memory");
+    }
+  while (--buflen);
+}
+
+static struct bench_ops auto_ghz_detect_ops = {
+  &auto_ghz_init,
+  &auto_ghz_free,
+  &auto_ghz_bench
+};
+
+
+double
+get_auto_ghz (void)
+{
+  struct bench_obj obj = { 0 };
+  double nsecs_per_iteration;
+  double cycles_per_iteration;
+
+  obj.ops = &auto_ghz_detect_ops;
+
+  nsecs_per_iteration = slope_benchmark (&obj);
+
+  cycles_per_iteration = nsecs_per_iteration * settings.cpu_ghz;
+
+  /* Adjust CPU Ghz so that cycles per iteration would give '1024.0'. */
+
+  return settings.cpu_ghz * 1024 / cycles_per_iteration;
+}
+
+
+double
+do_slope_benchmark (struct bench_obj *obj, double *bench_ghz)
+{
+  double ret;
+
+  if (!settings.auto_ghz)
+    {
+      /* Perform measurement without autodetection of CPU frequency. */
+
+      ret = slope_benchmark (obj);
+
+      *bench_ghz = settings.cpu_ghz;
+    }
+  else
+    {
+      double cpu_auto_ghz_before;
+      double cpu_auto_ghz_after;
+      double nsecs_per_iteration;
+      double diff;
+
+      /* Perform measurement with CPU frequency autodetection. */
+
+      do
+        {
+          /* Repeat measurement until CPU turbo frequency has stabilized. */
+
+          cpu_auto_ghz_before = get_auto_ghz ();
+
+          nsecs_per_iteration = slope_benchmark (obj);
+
+          cpu_auto_ghz_after = get_auto_ghz ();
+
+          diff = 1.0 - (cpu_auto_ghz_before / cpu_auto_ghz_after);
+          diff = diff < 0 ? -diff : diff;
+        }
+      while (diff > 5e-5);
+
+      ret = nsecs_per_iteration;
+
+      *bench_ghz = cpu_auto_ghz_after;
+    }
+
+  return ret;
+}
+
+
 /********************************************************** Printing results. */
 
 void
@@ -429,22 +548,24 @@ double_to_str (char *out, size_t outlen, double value)
 }
 
 void
-bench_print_result_csv (double nsecs_per_byte)
+bench_print_result_csv (double nsecs_per_byte, double bench_ghz)
 {
   double cycles_per_byte, mbytes_per_sec;
   char nsecpbyte_buf[16];
   char mbpsec_buf[16];
   char cpbyte_buf[16];
+  char mhz_buf[16];
 
   *cpbyte_buf = 0;
 
   double_to_str (nsecpbyte_buf, sizeof (nsecpbyte_buf), nsecs_per_byte);
 
   /* If user didn't provide CPU speed, we cannot show cycles/byte results.  */
-  if (settings.cpu_ghz > 0.0)
+  if (bench_ghz > 0.0)
     {
-      cycles_per_byte = nsecs_per_byte * settings.cpu_ghz;
+      cycles_per_byte = nsecs_per_byte * bench_ghz;
       double_to_str (cpbyte_buf, sizeof (cpbyte_buf), cycles_per_byte);
+      double_to_str (mhz_buf, sizeof (mhz_buf), bench_ghz * 1000);
     }
 
   mbytes_per_sec =
@@ -452,50 +573,76 @@ bench_print_result_csv (double nsecs_per_byte)
   double_to_str (mbpsec_buf, sizeof (mbpsec_buf), mbytes_per_sec);
 
   /* We print two empty fields to allow for future enhancements.  */
-  printf ("%s,%s,%s,,,%s,ns/B,%s,MiB/s,%s,c/B\n",
-          settings.current_section_name,
-          settings.current_algo_name? settings.current_algo_name : "",
-          settings.current_mode_name? settings.current_mode_name : "",
-          nsecpbyte_buf,
-          mbpsec_buf,
-          cpbyte_buf);
-
+  if (settings.auto_ghz)
+    {
+      printf ("%s,%s,%s,,,%s,ns/B,%s,MiB/s,%s,c/B,%s,Mhz\n",
+              settings.current_section_name,
+              settings.current_algo_name ? settings.current_algo_name : "",
+              settings.current_mode_name ? settings.current_mode_name : "",
+              nsecpbyte_buf,
+              mbpsec_buf,
+              cpbyte_buf,
+              mhz_buf);
+    }
+  else
+    {
+      printf ("%s,%s,%s,,,%s,ns/B,%s,MiB/s,%s,c/B\n",
+              settings.current_section_name,
+              settings.current_algo_name ? settings.current_algo_name : "",
+              settings.current_mode_name ? settings.current_mode_name : "",
+              nsecpbyte_buf,
+              mbpsec_buf,
+              cpbyte_buf);
+    }
 }
 
 void
-bench_print_result_std (double nsecs_per_byte)
+bench_print_result_std (double nsecs_per_byte, double bench_ghz)
 {
   double cycles_per_byte, mbytes_per_sec;
   char nsecpbyte_buf[16];
   char mbpsec_buf[16];
   char cpbyte_buf[16];
+  char mhz_buf[16];
 
   double_to_str (nsecpbyte_buf, sizeof (nsecpbyte_buf), nsecs_per_byte);
 
   /* If user didn't provide CPU speed, we cannot show cycles/byte results.  */
-  if (settings.cpu_ghz > 0.0)
+  if (bench_ghz > 0.0)
     {
-      cycles_per_byte = nsecs_per_byte * settings.cpu_ghz;
+      cycles_per_byte = nsecs_per_byte * bench_ghz;
       double_to_str (cpbyte_buf, sizeof (cpbyte_buf), cycles_per_byte);
+      double_to_str (mhz_buf, sizeof (mhz_buf), bench_ghz * 1000);
     }
   else
-    strcpy (cpbyte_buf, "-");
+    {
+      strcpy (cpbyte_buf, "-");
+      strcpy (mhz_buf, "-");
+    }
 
   mbytes_per_sec =
     (1000.0 * 1000.0 * 1000.0) / (nsecs_per_byte * 1024 * 1024);
   double_to_str (mbpsec_buf, sizeof (mbpsec_buf), mbytes_per_sec);
 
-  printf ("%9s ns/B %9s MiB/s %9s c/B\n",
-          nsecpbyte_buf, mbpsec_buf, cpbyte_buf);
+  if (settings.auto_ghz)
+    {
+      printf ("%9s ns/B %9s MiB/s %9s c/B %9s\n",
+              nsecpbyte_buf, mbpsec_buf, cpbyte_buf, mhz_buf);
+    }
+  else
+    {
+      printf ("%9s ns/B %9s MiB/s %9s c/B\n",
+              nsecpbyte_buf, mbpsec_buf, cpbyte_buf);
+    }
 }
 
 void
-bench_print_result (double nsecs_per_byte)
+bench_print_result (double nsecs_per_byte, double bench_ghz)
 {
   if (settings.csv_mode)
-    bench_print_result_csv (nsecs_per_byte);
+    bench_print_result_csv (nsecs_per_byte, bench_ghz);
   else
-    bench_print_result_std (nsecs_per_byte);
+    bench_print_result_std (nsecs_per_byte, bench_ghz);
 }
 
 void
@@ -524,8 +671,13 @@ bench_print_header (int algo_width, const char *algo_name)
         printf (" %-*s | ", -algo_width, algo_name);
       else
         printf (" %-*s | ", algo_width, algo_name);
-      printf ("%14s %15s %13s\n", "nanosecs/byte", "mebibytes/sec",
-              "cycles/byte");
+
+      if (settings.auto_ghz)
+        printf ("%14s %15s %13s %9s\n", "nanosecs/byte", "mebibytes/sec",
+                "cycles/byte", "auto Mhz");
+      else
+        printf ("%14s %15s %13s\n", "nanosecs/byte", "mebibytes/sec",
+                "cycles/byte");
     }
 }
 
@@ -582,7 +734,8 @@ print_help (const struct bench_group *bench_groups, const char *pgm)
     "",
     " options:",
     "   --cpu-mhz <mhz>           Set CPU speed for calculating cycles",
-    "                             per bytes results.",
+    "                             per bytes results.  Set as \"auto\"",
+    "                             for auto-detection of CPU speed.",
     "   --repetitions <n>         Use N repetitions (default "
                                      STR2(NUM_MEASUREMENT_REPETITIONS) ")",
     "   --unaligned               Use unaligned input buffers.",
@@ -668,8 +821,15 @@ slope_main_template (int argc, char **argv,
 	  argv++;
 	  if (argc)
 	    {
-	      settings.cpu_ghz = atof (*argv);
-	      settings.cpu_ghz /= 1000;	/* Mhz => Ghz */
+              if (!strcmp (*argv, "auto"))
+                {
+                  settings.auto_ghz = 1;
+                }
+              else
+                {
+                  settings.cpu_ghz = atof (*argv);
+                  settings.cpu_ghz /= 1000;	/* Mhz => Ghz */
+                }
 
 	      argc--;
 	      argv++;

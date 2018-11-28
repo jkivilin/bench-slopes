@@ -60,15 +60,6 @@ int main(void)
 
 /********************************************************* Cipher benchmarks. */
 
-struct bench_cipher_mode
-{
-  const char *name;
-  struct bench_ops *ops;
-  const char *aead_name;
-
-  int algo;
-};
-
 struct cipher_ctx_s
 {
   union
@@ -78,6 +69,16 @@ struct cipher_ctx_s
   };
   void *iv;
   unsigned char ctx[] __attribute__((aligned(32)));
+};
+
+struct bench_cipher_mode
+{
+  const char *name;
+  struct bench_ops *ops;
+  const char *aead_name;
+
+  int algo;
+  struct cipher_ctx_s *hd;
 };
 
 
@@ -257,7 +258,7 @@ bench_crypt_init (struct bench_obj *obj, int encrypt)
       exit (1);
     }
 
-  obj->priv = hd;
+  mode->hd = hd;
 
   return 0;
 }
@@ -277,7 +278,8 @@ bench_decrypt_init (struct bench_obj *obj)
 static void
 bench_crypt_free (struct bench_obj *obj)
 {
-  struct cipher_ctx_s *hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
 
   free (hd->iv);
   free (hd);
@@ -286,7 +288,8 @@ bench_crypt_free (struct bench_obj *obj)
 static void
 bench_ecb_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  struct cipher_ctx_s *hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
 
   hd->c->encrypt (&hd->ctx, buflen, buf, buf);
 }
@@ -294,7 +297,8 @@ bench_ecb_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 static void
 bench_ecb_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  struct cipher_ctx_s *hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
 
   hd->c->decrypt (&hd->ctx, buflen, buf, buf);
 }
@@ -302,7 +306,8 @@ bench_ecb_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 static void
 bench_cbc_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  struct cipher_ctx_s *hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
 
   cbc_encrypt (&hd->ctx, hd->c->encrypt, hd->c->block_size, hd->iv,
 	       buflen, buf, buf);
@@ -311,7 +316,8 @@ bench_cbc_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 static void
 bench_cbc_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  struct cipher_ctx_s *hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
 
   cbc_decrypt (&hd->ctx, hd->c->decrypt, hd->c->block_size, hd->iv,
 	       buflen, buf, buf);
@@ -320,7 +326,8 @@ bench_cbc_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 static void
 bench_ctr_crypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  struct cipher_ctx_s *hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
 
   ctr_crypt (&hd->ctx, hd->c->encrypt, hd->c->block_size, hd->iv,
 	     buflen, buf, buf);
@@ -440,7 +447,7 @@ bench_aead_crypt_init (struct bench_obj *obj, int encrypt)
       exit (1);
     }
 
-  obj->priv = hd;
+  mode->hd = hd;
 
   return 0;
 }
@@ -461,7 +468,8 @@ static void
 bench_aead_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen,
 			     const unsigned char *nonce, size_t noncelen)
 {
-  struct cipher_ctx_s *hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
   const struct nettle_aead *aead = hd->aead;
   unsigned char tag[aead->digest_size];
 
@@ -474,7 +482,8 @@ static void
 bench_aead_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen,
 			     const unsigned char *nonce, size_t noncelen)
 {
-  struct cipher_ctx_s *hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
   const struct nettle_aead *aead = hd->aead;
   unsigned char tag[aead->digest_size];
 
@@ -488,7 +497,8 @@ bench_aead_authenticate_do_bench (struct bench_obj *obj, void *buf,
 				  size_t buflen, const unsigned char *nonce,
 				  size_t noncelen)
 {
-  struct cipher_ctx_s *hd = obj->priv;
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
   const struct nettle_aead *aead = hd->aead;
   unsigned char tag[aead->digest_size];
   unsigned char data = 0xff;
@@ -619,6 +629,7 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   struct bench_cipher_mode mode = *pmode;
   struct bench_obj obj = { 0 };
   double result;
+  double bench_ghz;
   unsigned int blklen;
 
   mode.algo = algo;
@@ -643,9 +654,9 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj);
+  result = do_slope_benchmark (&obj, &bench_ghz);
 
-  bench_print_result (result);
+  bench_print_result (result, bench_ghz);
 }
 
 
@@ -694,18 +705,19 @@ cipher_bench (char **argv, int argc)
 
 /*********************************************************** Hash benchmarks. */
 
+struct md_ctx_s
+{
+  const struct nettle_hash *h;
+  unsigned char ctx[] __attribute__((aligned(32)));
+};
+
 struct bench_hash_mode
 {
   const char *name;
   struct bench_ops *ops;
 
   int algo;
-};
-
-struct md_ctx_s
-{
-  const struct nettle_hash *h;
-  unsigned char ctx[] __attribute__((aligned(32)));
+  struct md_ctx_s *hd;
 };
 
 static const struct nettle_hash * const nettle_hashes2[] =
@@ -796,7 +808,7 @@ bench_hash_init (struct bench_obj *obj)
       exit (1);
     }
 
-  obj->priv = hd;
+  mode->hd = hd;
 
   return 0;
 }
@@ -804,7 +816,8 @@ bench_hash_init (struct bench_obj *obj)
 static void
 bench_hash_free (struct bench_obj *obj)
 {
-  struct md_ctx_s *hd = obj->priv;
+  struct bench_hash_mode *mode = obj->priv;
+  struct md_ctx_s *hd = mode->hd;
 
   free(hd);
 }
@@ -812,7 +825,8 @@ bench_hash_free (struct bench_obj *obj)
 static void
 bench_hash_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
-  struct md_ctx_s *hd = obj->priv;
+  struct bench_hash_mode *mode = obj->priv;
+  struct md_ctx_s *hd = mode->hd;
   unsigned char digest[1];
   void *ctx = hd->ctx;
   const struct nettle_hash *h = hd->h;
@@ -841,6 +855,7 @@ hash_bench_one (int algo, struct bench_hash_mode *pmode)
   struct bench_hash_mode mode = *pmode;
   struct bench_obj obj = { 0 };
   double result;
+  double bench_ghz;
 
   mode.algo = algo;
 
@@ -852,9 +867,9 @@ hash_bench_one (int algo, struct bench_hash_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj);
+  result = do_slope_benchmark (&obj, &bench_ghz);
 
-  bench_print_result (result);
+  bench_print_result (result, bench_ghz);
 }
 
 

@@ -54,6 +54,9 @@ struct slope_settings
     results.  */
   double cpu_ghz;
 
+  /* Attempt to autodetect CPU Ghz. */
+  int auto_ghz;
+
   int csv_mode;
   unsigned int unaligned_mode;
   unsigned int num_measurement_repetitions;
@@ -73,6 +76,7 @@ struct bench_obj
   unsigned int min_bufsize;
   unsigned int max_bufsize;
   unsigned int step_size;
+  unsigned int num_measurement_repetitions;
 
   void *priv;
 };
@@ -94,18 +98,18 @@ extern struct slope_settings settings;
 
 
 /* Benchmark and return linear regression slope in nanoseconds per byte.  */
-double do_slope_benchmark (struct bench_obj *obj);
+double do_slope_benchmark (struct bench_obj *obj, double *bench_ghz);
 
 
 /********************************************************** Printing results. */
 
 void double_to_str (char *out, size_t outlen, double value);
 
-void bench_print_result_csv (double nsecs_per_byte);
+void bench_print_result_csv (double nsecs_per_byte, double bench_ghz);
 
-void bench_print_result_std (double nsecs_per_byte);
+void bench_print_result_std (double nsecs_per_byte, double bench_ghz);
 
-void bench_print_result (double nsecs_per_byte);
+void bench_print_result (double nsecs_per_byte, double bench_ghz);
 
 void bench_print_section (const char *section_name, const char *print_name);
 
