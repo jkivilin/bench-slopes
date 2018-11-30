@@ -21,5 +21,7 @@ src/Makefile.in
 src/bench-slope-gcrypt
 src/bench-slope-nettle
 src/bench-slope-openssl
+src/bench-slope-botan
 src/*.o
 stamp-h1
+*~

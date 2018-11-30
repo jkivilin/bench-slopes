@@ -9,6 +9,7 @@ AC_CONFIG_HEADERS([config.h])
 
 # Checks for programs.
 AC_PROG_CC
+AC_PROG_CXX
 
 # Checks for libraries.
 
@@ -42,9 +43,16 @@ AM_PATH_LIBGCRYPT("1.8.0",[AC_DEFINE(HAVE_LIBGCRYPT_1_8,1,"Have libgcrypt >= 1.8
 AM_PATH_LIBGCRYPT("1.6.0",[AC_DEFINE(HAVE_LIBGCRYPT_1_6,1,"Have libgcrypt >= 1.6")])
 AM_PATH_GPG_ERROR("1.0")
 
+# Check for botan
+PKG_CHECK_MODULES(botan, [botan-2], [AC_DEFINE(HAVE_BOTAN2,1,"Have botan-2")])
+BOTAN_LIBS=$botan_LIBS
+BOTAN_CFLAGS=$botan_CFLAGS
+
 AC_SUBST([NETTLE_LIBS])
 AC_SUBST([OPENSSL_LIBS])
 AC_SUBST([LIBGCRYPT_LIBS])
 AC_SUBST([GPG_ERROR_LIBS])
+AC_SUBST([BOTAN_LIBS])
+AC_SUBST([BOTAN_CFLAGS])
 
 AC_OUTPUT(Makefile src/Makefile)
