@@ -49,6 +49,7 @@ int main(void)
 #include <nettle/arcfour.h>
 #include <nettle/salsa20.h>
 #include <nettle/chacha.h>
+#include <nettle/version.h>
 
 #ifndef STR
 #define STR(v) #v
@@ -923,6 +924,10 @@ main (int argc, char **argv)
       { "cipher", cipher_bench },
       { NULL, NULL }
     };
+
+  printf("%s: Nettle %d.%d\n", PGM,
+         nettle_version_major(),
+         nettle_version_minor());
 
   return slope_main_template(argc, argv, groups, PGM);
 }
