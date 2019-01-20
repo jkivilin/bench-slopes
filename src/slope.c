@@ -331,7 +331,7 @@ adjust_loop_iterations_to_timer_accuracy (struct bench_obj *obj, void *buffer,
 static double
 slope_benchmark (struct bench_obj *obj)
 {
-  unsigned int num_repetitions = obj->num_measurement_repetitions;
+  unsigned int num_repetitions;
   unsigned int num_measurements;
   double *measurements = NULL;
   double *measurement_raw = NULL;
@@ -342,12 +342,13 @@ slope_benchmark (struct bench_obj *obj)
   size_t cur_bufsize;
   int err;
 
-  if (num_repetitions == 0)
-    num_repetitions = settings.num_measurement_repetitions;
-
   err = obj->ops->initialize (obj);
   if (err < 0)
     return -1;
+
+  num_repetitions = obj->num_measurement_repetitions;
+  if (num_repetitions == 0)
+    num_repetitions = settings.num_measurement_repetitions;
 
   num_measurements = get_num_measurements (obj);
   measurements = calloc (num_measurements, sizeof (*measurements));
