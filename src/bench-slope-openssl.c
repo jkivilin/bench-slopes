@@ -361,6 +361,12 @@ static const char *openssl_hashes[] =
   "sha512",
   "ripemd160",
   "whirlpool",
+  "sha3-224",
+  "sha3-256",
+  "sha3-384",
+  "sha3-512",
+  "shake128",
+  "shake256",
   NULL
 };
 
