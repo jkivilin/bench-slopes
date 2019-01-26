@@ -47,7 +47,8 @@ int main(void)
 #define STR2(v) STR(v)
 #endif
 
-#define PGM "bench-slope-openssl"
+#define LIBNAME "openssl"
+#define PGM "bench-slope-" LIBNAME
 
 
 /********************************************************* Cipher benchmarks. */
@@ -248,7 +249,6 @@ cipher_bench_one (const char *algo, const struct bench_cipher_mode *pmode)
   struct bench_cipher_mode mode = *pmode;
   struct bench_obj obj = { 0 };
   double result;
-  double bench_ghz;
   int blklen;
 
   snprintf(ecb_name, sizeof(ecb_name), "%s-ecb", algo);
@@ -297,9 +297,9 @@ cipher_bench_one (const char *algo, const struct bench_cipher_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj, &bench_ghz);
+  result = do_slope_benchmark (&obj);
 
-  bench_print_result (result, bench_ghz);
+  bench_print_result (result);
 }
 
 static void
@@ -434,7 +434,6 @@ hash_bench_one (const EVP_MD *algo, struct bench_hash_mode *pmode)
   struct bench_hash_mode mode = *pmode;
   struct bench_obj obj = { 0 };
   double result;
-  double bench_ghz;
 
   mode.algo = algo;
 
@@ -446,9 +445,9 @@ hash_bench_one (const EVP_MD *algo, struct bench_hash_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj, &bench_ghz);
+  result = do_slope_benchmark (&obj);
 
-  bench_print_result (result, bench_ghz);
+  bench_print_result (result);
 }
 
 
@@ -509,7 +508,7 @@ main (int argc, char **argv)
 
   OpenSSL_add_all_algorithms();
 
-  return slope_main_template(argc, argv, groups, PGM);
+  return slope_main_template(argc, argv, groups, PGM, LIBNAME);
 }
 
 #endif /* HAVE_OPENSSL */

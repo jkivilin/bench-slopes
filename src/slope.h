@@ -46,6 +46,14 @@
 #define NUM_MEASUREMENT_REPETITIONS	64
 
 
+/************************************** Default parameters for raw data mode. */
+
+#define RAW_BUF_START_SIZE		16
+#define RAW_BUF_END_SIZE		(2 * 1024 * 1024)
+#define RAW_BUF_STEP_MULTIPLY		2
+#define RAW_NUM_MEASUREMENT_REPETITIONS	64
+
+
 /********************************************** Slope benchmarking framework. */
 
 struct slope_settings
@@ -57,6 +65,7 @@ struct slope_settings
   /* Attempt to autodetect CPU Ghz. */
   int auto_ghz;
 
+  int raw_mode;
   int csv_mode;
   unsigned int unaligned_mode;
   unsigned int num_measurement_repetitions;
@@ -67,6 +76,16 @@ struct slope_settings
   char *current_algo_name;
   /* The name of the currently printed mode.  */
   char *current_mode_name;
+
+  /* The name of library being benchmarked. */
+  const char *library_name;
+  /* The name of machine being benchmarked. */
+  char *machine_name;
+
+  /* Currently auto-detected CPU ghz. */
+  double bench_ghz;
+  /* Current accuracy of auto-detected CPU ghz. */
+  double bench_ghz_diff;
 };
 
 struct bench_obj
@@ -98,18 +117,18 @@ extern struct slope_settings settings;
 
 
 /* Benchmark and return linear regression slope in nanoseconds per byte.  */
-double do_slope_benchmark (struct bench_obj *obj, double *bench_ghz);
+double do_slope_benchmark (struct bench_obj *obj);
 
 
 /********************************************************** Printing results. */
 
 void double_to_str (char *out, size_t outlen, double value);
 
-void bench_print_result_csv (double nsecs_per_byte, double bench_ghz);
+void bench_print_result_csv (double nsecs_per_byte);
 
-void bench_print_result_std (double nsecs_per_byte, double bench_ghz);
+void bench_print_result_std (double nsecs_per_byte);
 
-void bench_print_result (double nsecs_per_byte, double bench_ghz);
+void bench_print_result (double nsecs_per_byte);
 
 void bench_print_section (const char *section_name, const char *print_name);
 
@@ -132,6 +151,6 @@ struct bench_group
 int
 slope_main_template (int argc, char **argv,
 		     const struct bench_group *bench_groups,
-		     const char *pgm);
+		     const char *pgm, const char *libname);
 
 #endif /* SRC_SLOPE_H */

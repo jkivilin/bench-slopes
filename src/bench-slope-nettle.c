@@ -56,7 +56,8 @@ int main(void)
 #define STR2(v) STR(v)
 #endif
 
-#define PGM "bench-slope-nettle"
+#define LIBNAME "nettle"
+#define PGM "bench-slope-" LIBNAME
 
 
 /********************************************************* Cipher benchmarks. */
@@ -630,7 +631,6 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   struct bench_cipher_mode mode = *pmode;
   struct bench_obj obj = { 0 };
   double result;
-  double bench_ghz;
   unsigned int blklen;
 
   mode.algo = algo;
@@ -655,9 +655,9 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj, &bench_ghz);
+  result = do_slope_benchmark (&obj);
 
-  bench_print_result (result, bench_ghz);
+  bench_print_result (result);
 }
 
 
@@ -856,7 +856,6 @@ hash_bench_one (int algo, struct bench_hash_mode *pmode)
   struct bench_hash_mode mode = *pmode;
   struct bench_obj obj = { 0 };
   double result;
-  double bench_ghz;
 
   mode.algo = algo;
 
@@ -868,9 +867,9 @@ hash_bench_one (int algo, struct bench_hash_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj, &bench_ghz);
+  result = do_slope_benchmark (&obj);
 
-  bench_print_result (result, bench_ghz);
+  bench_print_result (result);
 }
 
 
@@ -929,7 +928,7 @@ main (int argc, char **argv)
          nettle_version_major(),
          nettle_version_minor());
 
-  return slope_main_template(argc, argv, groups, PGM);
+  return slope_main_template(argc, argv, groups, PGM, LIBNAME);
 }
 
 #endif /* HAVE_LIBNETTLE */

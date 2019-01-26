@@ -46,6 +46,7 @@ int main(void)
 #define STR2(v) STR(v)
 #endif
 
+#define LIBNAME "libgcrypt"
 #define PGM "bench-slope-gcrypt"
 
 
@@ -751,7 +752,6 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   struct bench_cipher_mode mode = *pmode;
   struct bench_obj obj = { 0 };
   double result;
-  double bench_ghz;
   unsigned int blklen;
 
   mode.algo = algo;
@@ -798,9 +798,9 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj, &bench_ghz);
+  result = do_slope_benchmark (&obj);
 
-  bench_print_result (result, bench_ghz);
+  bench_print_result (result);
 }
 
 
@@ -921,7 +921,6 @@ hash_bench_one (int algo, struct bench_hash_mode *pmode)
   struct bench_hash_mode mode = *pmode;
   struct bench_obj obj = { 0 };
   double result;
-  double bench_ghz;
 
   mode.algo = algo;
 
@@ -933,9 +932,9 @@ hash_bench_one (int algo, struct bench_hash_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj, &bench_ghz);
+  result = do_slope_benchmark (&obj);
 
-  bench_print_result (result, bench_ghz);
+  bench_print_result (result);
 }
 
 static void
@@ -1090,7 +1089,6 @@ mac_bench_one (int algo, struct bench_mac_mode *pmode)
   struct bench_mac_mode mode = *pmode;
   struct bench_obj obj = { 0 };
   double result;
-  double bench_ghz;
 
   mode.algo = algo;
 
@@ -1102,9 +1100,9 @@ mac_bench_one (int algo, struct bench_mac_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj, &bench_ghz);
+  result = do_slope_benchmark (&obj);
 
-  bench_print_result (result, bench_ghz);
+  bench_print_result (result);
 }
 
 static void
@@ -1205,7 +1203,6 @@ kdf_bench_one (int algo, int subalgo)
   struct bench_obj obj = { 0 };
   double nsecs_per_iteration;
   double cycles_per_iteration;
-  double bench_ghz;
   char algo_name[32];
   char nsecpiter_buf[16];
   char cpiter_buf[16];
@@ -1243,18 +1240,18 @@ kdf_bench_one (int algo, int subalgo)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  nsecs_per_iteration = do_slope_benchmark (&obj, &bench_ghz);
+  nsecs_per_iteration = do_slope_benchmark (&obj);
 
   strcpy(cpiter_buf, settings.csv_mode ? "" : "-");
 
   double_to_str (nsecpiter_buf, sizeof (nsecpiter_buf), nsecs_per_iteration);
 
   /* If user didn't provide CPU speed, we cannot show cycles/iter results.  */
-  if (bench_ghz > 0.0)
+  if (settings.bench_ghz > 0.0)
     {
-      cycles_per_iteration = nsecs_per_iteration * bench_ghz;
+      cycles_per_iteration = nsecs_per_iteration * settings.bench_ghz;
       double_to_str (cpiter_buf, sizeof (cpiter_buf), cycles_per_iteration);
-      double_to_str (mhz_buf, sizeof (mhz_buf), bench_ghz * 1000);
+      double_to_str (mhz_buf, sizeof (mhz_buf), settings.bench_ghz * 1000);
     }
 
   if (settings.csv_mode)
@@ -1344,7 +1341,7 @@ main (int argc, char **argv)
       { NULL, NULL }
     };
 
-  printf("%s: libgcrypt version: %s\n", PGM, GCRYPT_VERSION);
+  printf("%s: libgcrypt: %s\n", PGM, gcry_check_version (NULL));
 
   if (!gcry_check_version (GCRYPT_VERSION))
     {
@@ -1357,7 +1354,7 @@ main (int argc, char **argv)
   gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
   gcry_control (GCRYCTL_ENABLE_QUICK_RANDOM, 0);
 
-  return slope_main_template(argc, argv, groups, PGM);
+  return slope_main_template(argc, argv, groups, PGM, LIBNAME);
 }
 
 #endif /* HAVE_LIBGCRYPT_1_6 */

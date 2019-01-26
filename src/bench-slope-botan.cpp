@@ -55,7 +55,8 @@ extern "C" {
 #define STR2(v) STR(v)
 #endif
 
-#define PGM "bench-slope-botan"
+#define LIBNAME "botan"
+#define PGM "bench-slope-" LIBNAME
 
 
 /********************************************************* Cipher benchmarks. */
@@ -405,7 +406,6 @@ cipher_bench_one (const char *algo, const struct bench_cipher_mode *pmode,
   struct bench_cipher_mode mode;
   struct bench_obj obj = { 0 };
   double result;
-  double bench_ghz;
   int blklen;
 
   memcpy(&mode, pmode, sizeof(mode));
@@ -442,9 +442,9 @@ cipher_bench_one (const char *algo, const struct bench_cipher_mode *pmode,
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj, &bench_ghz);
+  result = do_slope_benchmark (&obj);
 
-  bench_print_result (result, bench_ghz);
+  bench_print_result (result);
 }
 
 static void
@@ -631,7 +631,6 @@ hash_bench_one (const char *algo, struct bench_hash_mode *pmode)
   struct bench_hash_mode mode;
   struct bench_obj obj = { 0 };
   double result;
-  double bench_ghz;
 
   memcpy(&mode, pmode, sizeof(mode));
 
@@ -645,9 +644,9 @@ hash_bench_one (const char *algo, struct bench_hash_mode *pmode)
   obj.ops = mode.ops;
   obj.priv = &mode;
 
-  result = do_slope_benchmark (&obj, &bench_ghz);
+  result = do_slope_benchmark (&obj);
 
-  bench_print_result (result, bench_ghz);
+  bench_print_result (result);
 }
 
 
@@ -706,7 +705,7 @@ main (int argc, char **argv)
 
   printf("%s: %s\n", PGM, Botan::version_string().c_str());
 
-  return slope_main_template(argc, argv, groups, PGM);
+  return slope_main_template(argc, argv, groups, PGM, LIBNAME);
 }
 
 #endif /* HAVE_BOTAN2 */

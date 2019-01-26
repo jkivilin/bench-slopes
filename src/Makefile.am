@@ -16,3 +16,10 @@ bench_slope_botan_SOURCES = $(common_src) bench-slope-botan.cpp
 bench_slope_botan_CFLAGS = $(BOTAN_CFLAGS)
 bench_slope_botan_CXXFLAGS = $(BOTAN_CFLAGS)
 bench_slope_botan_LDADD = $(BOTAN_LIBS)
+
+bin_SCRIPTS = plot_raw_results.sh
+EXTRA_DIST = plot_raw_results.sh.in
+
+plot_raw_results.sh:
+	cat $(srcdir)/plot_raw_results.sh.in > plot_raw_results.sh
+	chmod +x plot_raw_results.sh
