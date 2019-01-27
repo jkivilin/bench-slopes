@@ -19,7 +19,8 @@ bench_slope_botan_LDADD = $(BOTAN_LIBS)
 
 bin_SCRIPTS = plot_raw_results.sh
 EXTRA_DIST = plot_raw_results.sh.in
+CLEANFILES = $(bin_SCRIPTS)
 
-plot_raw_results.sh:
+plot_raw_results.sh: $(srcdir)/plot_raw_results.sh.in
 	cat $(srcdir)/plot_raw_results.sh.in > plot_raw_results.sh
 	chmod +x plot_raw_results.sh

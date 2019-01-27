@@ -4,22 +4,24 @@ function get_machine() {
   echo "$1" | sed 's/^.*_on_\(.*\)\.csv$/\1/g'
 }
 function get_libname() {
-  echo "$1" | sed 's/^\(.*\)_results_for_cipher_.*$/\1/g'
+  echo "$1" | sed "s/^\(.*\)_results_for_$2_.*$/\1/g"
 }
 function get_dataname() {
-  echo "$1" | sed 's/^.*_results_for_cipher_\(.*\)_on_.*\.csv$/\1/g'
+  echo "$1" | sed "s/^.*_results_for_$2_\(.*\)_on_.*\.csv$/\1/g"
 }
 
 function output_gnuplot_script() {
-  local outfile="$1"
-  local -n infiles=$2
+  local type="$1"
+  local outfile="$2"
+  local -n infiles=$3
+  local outfilename="results_${type}_${outfile}.pdf"
 
-  if [ -e "results_$outfile.pdf" ]; then
-    rm "results_$outfile.pdf"
+  if [ -e "$outfilename" ]; then
+    rm "$outfilename"
   fi
 
   echo "set terminal pdf noenhanced solid size 5.0, 3.5"
-  echo "set output 'results_$outfile.pdf'"
+  echo "set output '$outfilename'"
   echo "set xrange [10:2200000]"
   echo "set format x \"%.0f\""
 
@@ -40,9 +42,9 @@ function output_gnuplot_script() {
   echo -n "plot "
   local first=1
   for file in "${infiles[@]}"; do
-    local libname=$(get_libname $file)
-    local machine=$(get_machine $file)
-    local dataname=$(get_dataname $file)
+    local libname=$(get_libname $file $type)
+    local machine=$(get_machine $file $type)
+    local dataname=$(get_dataname $file $type)
 
     if [ $first != 1 ]; then
       echo -n ","
@@ -65,9 +67,9 @@ function output_gnuplot_script() {
   echo -n "plot "
   local first=1
   for file in "${infiles[@]}"; do
-    local libname=$(get_libname $file)
-    local machine=$(get_machine $file)
-    local dataname=$(get_dataname $file)
+    local libname=$(get_libname $file $type)
+    local machine=$(get_machine $file $type)
+    local dataname=$(get_dataname $file $type)
 
     if [ $first != 1 ]; then
       echo -n ","
@@ -90,9 +92,9 @@ function output_gnuplot_script() {
   echo -n "plot "
   local first=1
   for file in "${infiles[@]}"; do
-    local libname=$(get_libname $file)
-    local machine=$(get_machine $file)
-    local dataname=$(get_dataname $file)
+    local libname=$(get_libname $file $type)
+    local machine=$(get_machine $file $type)
+    local dataname=$(get_dataname $file $type)
 
     if [ $first != 1 ]; then
       echo -n ","
@@ -105,16 +107,18 @@ function output_gnuplot_script() {
 }
 
 function do_plot() {
-  local topic="$1"
-  local ign="$2"
-  local mode="$3"
+  local type="$1"
+  local topic="$2"
+  local ign="$3"
+  local mode="$4"
+  shift
   shift
   shift
   shift
   local arr=("$@")
   files=()
   for match in "${arr[@]}"; do
-    for fname in *_results_for_cipher_$match$mode*.csv; do
+    for fname in *_results_for_${type}_$match$mode*.csv; do
       local okname=$(grep -v -- "$ign" <<< "$fname")
       if [ "x$ign" != "x" ] && [ "x$okname" = "x" ]; then
 	continue
@@ -125,7 +129,7 @@ function do_plot() {
     done
   done
   if [ "${#files[@]}" -gt "0" ]; then
-    output_gnuplot_script "$topic" files | gnuplot
+    output_gnuplot_script "$type" "$topic" files | gnuplot
   fi
 }
 
@@ -134,14 +138,14 @@ function plot_blockcipher() {
   shift
   local array=("$@")
 
-  do_plot "$bcipher-CBC" "" "_CBC" "${array[@]}"
-  do_plot "$bcipher-CFB" "" "_CFB" "${array[@]}"
-  do_plot "$bcipher-XTS" "" "_XTS" "${array[@]}"
-  do_plot "$bcipher-CTR" "-dec_" "_CTR" "${array[@]}"
-  do_plot "$bcipher-GCM" "-auth_" "_GCM" "${array[@]}"
-  do_plot "$bcipher-CCM" "-auth_" "_CCM" "${array[@]}"
-  do_plot "$bcipher-EAX" "-auth_" "_EAX" "${array[@]}"
-  do_plot "$bcipher-OCB" "-auth_" "_OCB" "${array[@]}"
+  do_plot cipher "$bcipher-CBC" "" "_CBC" "${array[@]}"
+  do_plot cipher "$bcipher-CFB" "" "_CFB" "${array[@]}"
+  do_plot cipher "$bcipher-XTS" "" "_XTS" "${array[@]}"
+  do_plot cipher "$bcipher-CTR" "-dec_" "_CTR" "${array[@]}"
+  do_plot cipher "$bcipher-GCM" "-auth_" "_GCM" "${array[@]}"
+  do_plot cipher "$bcipher-CCM" "-auth_" "_CCM" "${array[@]}"
+  do_plot cipher "$bcipher-EAX" "-auth_" "_EAX" "${array[@]}"
+  do_plot cipher "$bcipher-OCB" "-auth_" "_OCB" "${array[@]}"
 }
 
 plot_blockcipher "AES128" AES-128 aes-128 aes128 AES &
@@ -155,8 +159,21 @@ plot_blockcipher "3DES" des-ede3 des3 3DES &
 plot_blockcipher "Blowfish" bf blowfish Blowfish BLOWFISH &
 plot_blockcipher "CAST5" cast5 cast128 CAST-128 CAST5 &
 
-do_plot "RC4" "STREAM-dec_" "_STREAM" rc4 RC4 arcfour ARCFOUR &
-do_plot "ChaCha20" "STREAM-dec_" "_STREAM" chacha20 chacha CHACHA20 ChaCha &
-do_plot "ChaCha20-Poly1305" "-auth_" "_POLY1305" chacha20 chacha CHACHA20 ChaCha &
+do_plot cipher "RC4" "STREAM-dec_" "_STREAM" rc4 RC4 arcfour ARCFOUR &
+do_plot cipher "ChaCha20" "STREAM-dec_" "_STREAM" chacha20 chacha CHACHA20 ChaCha &
+do_plot cipher "ChaCha20-Poly1305" "-auth_" "_POLY1305" chacha20 chacha CHACHA20 ChaCha &
+
+do_plot hash "MD5" "" "" MD5 md5 &
+do_plot hash "SHA1" "" "" SHA1 sha1 SHA-1 &
+do_plot hash "SHA256" "" "" SHA256 sha256 SHA-256 &
+do_plot hash "SHA512" "" "" SHA512 sha512 SHA-512 &
+do_plot hash "SHA3-256" "" "" SHA3-256 sha3_256 &
+do_plot hash "BLAKE2S-256" "" "" BLAKE2s256 BLAKE2S_256 &
+do_plot hash "BLAKE2B-512" "" "" BLAKE2b512 BLAKE2B_512 &
+do_plot hash "RIPEMD160" "" "" RIPEMD160 RIPEMD-160 ripemd160 &
+do_plot hash "Whirlpool" "" "" WHIRLPOOL whirlpool Whirlpool &
+do_plot hash "SM3" "" "" SM3 &
+do_plot hash "CRC24" "" "" CRC24 &
+do_plot hash "CRC32" "" "" CRC32 &
 
 wait
