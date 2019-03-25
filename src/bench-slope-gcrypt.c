@@ -1287,6 +1287,9 @@ kdf_bench (char **argv, int argc)
   char algo_name[32];
   int i, j;
 
+  if (settings.raw_mode)
+    return;
+
   bench_print_section ("kdf", "KDF");
 
   if (!settings.csv_mode)
