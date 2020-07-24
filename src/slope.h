@@ -1,5 +1,5 @@
 /* slope.h - slope benchmarking framework
- * Copyright © 2013, 2016-2018 Jussi Kivilinna <jussi.kivilinna@iki.fi>
+ * Copyright © 2013, 2016-2020 Jussi Kivilinna <jussi.kivilinna@iki.fi>
  *
  * This file is part of Bench-slopes.
  *

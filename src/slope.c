@@ -1,5 +1,5 @@
 /* slope.c - slope benchmarking framework
- * Copyright © 2013, 2016-2018 Jussi Kivilinna <jussi.kivilinna@iki.fi>
+ * Copyright © 2013, 2016-2020 Jussi Kivilinna <jussi.kivilinna@iki.fi>
  *
  * This file is part of Bench-slopes.
  *
@@ -1058,7 +1058,6 @@ slope_main_template (int argc, char **argv,
 {
   const struct bench_group *group;
   int last_argc = -1;
-  int debug = 0;
 
   if (argc)
     {
