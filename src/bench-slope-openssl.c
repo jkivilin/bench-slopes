@@ -1,5 +1,5 @@
 /* bench-slope-openssl.c - libgcrypt style benchmark for OpenSSL
- * Copyright © 2017-2018 Jussi Kivilinna <jussi.kivilinna@iki.fi>
+ * Copyright © 2017-2020 Jussi Kivilinna <jussi.kivilinna@iki.fi>
  *
  * This file is part of Bench-slopes.
  *
@@ -22,7 +22,7 @@
 #endif
 #include <stdio.h>
 
-#ifndef HAVE_OPENSSL
+#if defined(HAVE_CONFIG_H) && !defined(HAVE_OPENSSL)
 
 int main(void)
 {

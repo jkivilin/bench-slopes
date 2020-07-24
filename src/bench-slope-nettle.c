@@ -1,5 +1,5 @@
 /* bench-slope-nettle.c - libgcrypt style benchmark for libnettle
- * Copyright © 2016-2018 Jussi Kivilinna <jussi.kivilinna@iki.fi>
+ * Copyright © 2016-2020 Jussi Kivilinna <jussi.kivilinna@iki.fi>
  *
  * This file is part of Bench-slopes.
  *
@@ -20,10 +20,9 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
-
 #include <stdio.h>
 
-#ifndef HAVE_LIBNETTLE
+#if defined(HAVE_CONFIG_H) && !defined(HAVE_LIBNETTLE)
 
 int main(void)
 {

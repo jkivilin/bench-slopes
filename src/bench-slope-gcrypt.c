@@ -1,5 +1,5 @@
 /* bench-slope-gcrypt.c - for libgcrypt
- * Copyright (C) 2013,2017-2018 Jussi Kivilinna <jussi.kivilinna@iki.fi>
+ * Copyright (C) 2013,2017-2020 Jussi Kivilinna <jussi.kivilinna@iki.fi>
  *
  * This file is part of Bench-slopes.
  *
@@ -22,7 +22,7 @@
 #endif
 #include <stdio.h>
 
-#ifndef HAVE_LIBGCRYPT_1_6
+#if defined(HAVE_CONFIG_H) && !defined(HAVE_LIBGCRYPT_1_6)
 
 int main(void)
 {

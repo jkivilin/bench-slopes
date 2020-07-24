@@ -1,5 +1,5 @@
 /* bench-slope-botan.cpp - libgcrypt style benchmark for Botan
- * Copyright © 2018 Jussi Kivilinna <jussi.kivilinna@iki.fi>
+ * Copyright © 2018-2020 Jussi Kivilinna <jussi.kivilinna@iki.fi>
  *
  * This file is part of Bench-slopes.
  *
@@ -22,7 +22,7 @@
 #endif
 #include <stdio.h>
 
-#ifndef HAVE_BOTAN2
+#if defined(HAVE_CONFIG_H) && !defined(HAVE_BOTAN2)
 
 int main(void)
 {
