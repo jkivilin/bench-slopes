@@ -7,6 +7,9 @@ AC_CONFIG_SRCDIR([src/slope.c])
 AM_INIT_AUTOMAKE
 AC_CONFIG_HEADERS([config.h])
 
+CFLAGS="$CFLAGS -Wall"
+CXXFLAGS="$CXXFLAGS -Wall"
+
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_CXX

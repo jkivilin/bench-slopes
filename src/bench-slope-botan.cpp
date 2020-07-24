@@ -153,7 +153,7 @@ bench_crypt_cipher_mode_free (struct bench_obj *obj)
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
 
-  mode->cm.release();
+  delete mode->cm.release();
 }
 
 static void
@@ -162,7 +162,6 @@ bench_crypt_cipher_mode_do_bench (struct bench_obj *obj, void *buf,
 {
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
-  unsigned int outlen = 0;
   uint8_t iv[mode->cm->default_nonce_length()] = {0,};
 
   mode->cm->start(iv, sizeof(iv));
@@ -231,7 +230,7 @@ bench_crypt_aead_mode_free (struct bench_obj *obj)
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
 
-  mode->am.release();
+  delete mode->am.release();
 }
 
 static void
@@ -240,7 +239,6 @@ bench_encrypt_aead_mode_do_bench (struct bench_obj *obj, void *buf,
 {
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
-  unsigned int outlen = 0;
   uint8_t iv[mode->am->default_nonce_length()] = {0,};
   Botan::secure_vector<uint8_t> tag;
 
@@ -255,7 +253,6 @@ bench_decrypt_aead_mode_do_bench (struct bench_obj *obj, void *buf,
 {
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
-  unsigned int outlen = 0;
   uint8_t iv[mode->am->default_nonce_length()] = {0,};
 
   mode->am->start(iv, sizeof(iv));
@@ -268,7 +265,6 @@ bench_authenticate_aead_mode_do_bench (struct bench_obj *obj, void *buf,
 {
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
-  unsigned int outlen = 0;
   uint8_t iv[mode->am->default_nonce_length()] = {0,};
   Botan::secure_vector<uint8_t> tag;
 
@@ -342,7 +338,7 @@ bench_crypt_stream_cipher_free (struct bench_obj *obj)
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
 
-  mode->sc.release();
+  delete mode->sc.release();
 }
 
 static void
@@ -351,7 +347,6 @@ bench_crypt_stream_cipher_do_bench (struct bench_obj *obj, void *buf,
 {
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
-  unsigned int outlen = 0;
 
   if (mode->ivlen > 0)
   {
@@ -406,9 +401,8 @@ cipher_bench_one (const char *algo, const struct bench_cipher_mode *pmode,
   struct bench_cipher_mode mode;
   struct bench_obj obj = { 0 };
   double result;
-  int blklen;
 
-  memcpy(&mode, pmode, sizeof(mode));
+  memcpy(reinterpret_cast<void *>(&mode), pmode, sizeof(mode));
 
   if (plain_algo)
     snprintf(mode.algo, sizeof(mode.algo), "%s", algo);
@@ -422,7 +416,7 @@ cipher_bench_one (const char *algo, const struct bench_cipher_mode *pmode,
     struct bench_cipher_mode mode_test;
     struct bench_obj obj_test = { .priv = &mode_test };
     static uint64_t tmpbuf[16];
-    memcpy(&mode_test, &mode, sizeof(mode));
+    memcpy(reinterpret_cast<void *>(&mode_test), &mode, sizeof(mode));
     if (mode_test.ops->initialize(&obj_test) < 0)
       return;
     mode_test.ops->do_run(&obj_test, &tmpbuf, sizeof(tmpbuf));
@@ -465,7 +459,6 @@ static void
 _stream_cipher_bench (const char *algo)
 {
   struct bench_cipher_mode mode = {};
-  int i;
 
   cipher_header_printed = 0;
 
@@ -598,7 +591,7 @@ bench_hash_free (struct bench_obj *obj)
   struct bench_hash_mode *mode =
     reinterpret_cast<struct bench_hash_mode *>(obj->priv);
 
-  mode->hd.release();
+  delete mode->hd.release();
 }
 
 static void
@@ -632,7 +625,7 @@ hash_bench_one (const char *algo, struct bench_hash_mode *pmode)
   struct bench_obj obj = { 0 };
   double result;
 
-  memcpy(&mode, pmode, sizeof(mode));
+  memcpy(reinterpret_cast<void *>(&mode), pmode, sizeof(mode));
 
   mode.algo = algo;
 
