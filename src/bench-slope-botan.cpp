@@ -234,43 +234,89 @@ bench_crypt_aead_mode_free (struct bench_obj *obj)
 }
 
 static void
-bench_encrypt_aead_mode_do_bench (struct bench_obj *obj, void *buf,
+bench_encrypt_aead_mode_do_bench (struct bench_obj *obj, void *vbuf,
 				  size_t buflen)
 {
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
   uint8_t iv[mode->am->default_nonce_length()] = {0,};
-  Botan::secure_vector<uint8_t> tag;
+  uint8_t *buf = reinterpret_cast<uint8_t *>(vbuf);
+  size_t granularity = mode->am->update_granularity();
 
   mode->am->start(iv, sizeof(iv));
-  mode->am->process(reinterpret_cast<uint8_t *>(buf), buflen);
-  mode->am->finish(tag);
+
+  if ((buflen % granularity == 0 && buflen / granularity > 1) ||
+      (buflen % granularity != 0 && buflen / granularity > 0))
+  {
+    size_t num_g = buflen / granularity - (buflen % granularity == 0);
+    mode->am->process(buf, num_g * granularity);
+    buf += num_g * granularity;
+    buflen -= num_g * granularity;
+  }
+
+  Botan::secure_vector<uint8_t> tail(buf, buf + buflen);
+  mode->am->finish(tail);
 }
 
 static void
-bench_decrypt_aead_mode_do_bench (struct bench_obj *obj, void *buf,
+bench_decrypt_aead_mode_do_bench (struct bench_obj *obj, void *vbuf,
 				  size_t buflen)
 {
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
   uint8_t iv[mode->am->default_nonce_length()] = {0,};
+  uint8_t mac[mode->am->tag_size()] = {0,};
+  uint8_t *buf = reinterpret_cast<uint8_t *>(vbuf);
+  size_t granularity = mode->am->update_granularity();
 
   mode->am->start(iv, sizeof(iv));
-  mode->am->process(reinterpret_cast<uint8_t *>(buf), buflen);
+
+  if ((buflen % granularity == 0 && buflen / granularity > 1) ||
+      (buflen % granularity != 0 && buflen / granularity > 0))
+  {
+    size_t num_g = buflen / granularity - (buflen % granularity == 0);
+    mode->am->process(buf, num_g * granularity);
+    buf += num_g * granularity;
+    buflen -= num_g * granularity;
+  }
+
+  Botan::secure_vector<uint8_t> tail(buflen + sizeof(mac));
+  tail.insert(tail.end(), buf, buf + buflen);
+  tail.insert(tail.end(), mac, mac + sizeof(mac));
+  try
+  {
+    mode->am->finish(tail);
+  }
+  catch(...)
+  {
+    /* tag/mac check always fails. */
+  }
 }
 
 static void
-bench_authenticate_aead_mode_do_bench (struct bench_obj *obj, void *buf,
+bench_authenticate_aead_mode_do_bench (struct bench_obj *obj, void *vbuf,
 				       size_t buflen)
 {
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
   uint8_t iv[mode->am->default_nonce_length()] = {0,};
-  Botan::secure_vector<uint8_t> tag;
+  uint8_t mac[mode->am->tag_size()] = {0,};
+  uint8_t *buf = reinterpret_cast<uint8_t *>(vbuf);
 
-  mode->am->start(iv, sizeof(iv));
-  mode->am->set_associated_data(reinterpret_cast<uint8_t *>(buf), buflen);
-  mode->am->finish(tag);
+  mode->am->reset();
+  mode->am->set_associated_data(buf, buflen);
+
+  try
+  {
+    mode->am->start(iv, sizeof(iv));
+    Botan::secure_vector<uint8_t> tail(sizeof(mac));
+    tail.insert(tail.end(), mac, mac + sizeof(mac));
+    mode->am->finish(tail);
+  }
+  catch(...)
+  {
+    /* tag/mac check always fails. */
+  }
 }
 
 static struct bench_ops aead_mode_encrypt_ops = {
@@ -286,7 +332,7 @@ static struct bench_ops aead_mode_decrypt_ops = {
 };
 
 static struct bench_ops aead_mode_authenticate_ops = {
-  &bench_encrypt_aead_mode_init,
+  &bench_decrypt_aead_mode_init,
   &bench_crypt_aead_mode_free,
   &bench_authenticate_aead_mode_do_bench
 };
@@ -385,11 +431,8 @@ static const struct bench_cipher_mode block_cipher_modes[] = {
   {"EAX enc", &aead_mode_encrypt_ops, "EAX"},
   {"EAX dec", &aead_mode_decrypt_ops, "EAX"},
   {"EAX auth", &aead_mode_authenticate_ops, "EAX"},
-#if 0
-  /* Disabled because of OCB bug */
   {"OCB enc", &aead_mode_encrypt_ops, "OCB"},
   {"OCB dec", &aead_mode_decrypt_ops, "OCB"},
-#endif
   {"OCB auth", &aead_mode_authenticate_ops, "OCB"},
   {0},
 };
