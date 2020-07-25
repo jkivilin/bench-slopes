@@ -32,7 +32,8 @@ AC_CHECK_FUNCS([clock_gettime gettimeofday strdup])
 saved_LIBS=$LIBS
 LIBS=
 AC_CHECK_HEADERS(nettle/nettle-meta.h)
-AC_SEARCH_LIBS([nettle_aeads],[nettle],[AC_DEFINE(HAVE_LIBNETTLE,1,"Have libnettle")])
+AC_SEARCH_LIBS([nettle_aeads],[nettle],[AC_DEFINE(HAVE_LIBNETTLE,1,"Have libnettle")],
+	AC_SEARCH_LIBS([nettle_get_aeads],[nettle],[AC_DEFINE(HAVE_LIBNETTLE,1,"Have libnettle")]))
 NETTLE_LIBS=$LIBS
 LIBS=$saved_LIBS
 
