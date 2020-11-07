@@ -282,7 +282,7 @@ hash,RIPEMD160,,,,1.82,ns/B,524.7,MiB/s,7.95,c/B,4374.1,Mhz
 TODO: Describe raw mode, which is completely different from normal mode.
 TODO: Describe 'plot_raw_results.sh'
 
-## License
+# License
 
 GNU Lesser General Public License v2.1 or later
 
