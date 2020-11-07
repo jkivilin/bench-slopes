@@ -18,7 +18,7 @@ Repository currently has support for following libraries:
 
 Benchmark measures speed of algorithm for different input sizes 16, 32, 48, 64, ..., 4096.
 From these data points, 'time per byte' slope is calculated. Since the 'time per byte' result
-is takes this way, any call overhead is eliminated from the result. Results are close to
+is taken this way, any call overhead is eliminated from the result. Therefore results are close to
 'time/cycle per byte for large buffer' benchmarks seen in other benchmarking tools. 
 
 # Building
