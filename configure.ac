@@ -28,6 +28,23 @@ AC_FUNC_MALLOC
 AC_SEARCH_LIBS([clock_gettime],[rt posix4])
 AC_CHECK_FUNCS([clock_gettime gettimeofday strdup])
 
+#
+# Check whether the compiler supports inline assembly memory barrier.
+#
+AC_CACHE_CHECK([whether inline assembly memory barrier is supported],
+    [bs_cv_have_asm_volatile_memory],
+    [bs_cv_have_asm_volatile_memory=no
+    AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+      [[void a(int x)
+	{
+	  asm volatile("":::"memory");
+	  asm volatile("":"+r"(x)::"memory"); }]])],
+      [bs_cv_have_asm_volatile_memory=yes])])
+if test "$bs_cv_have_asm_volatile_memory" = "yes" ; then
+   AC_DEFINE(HAVE_GCC_ASM_VOLATILE_MEMORY,1,
+     [Define if inline asm memory barrier is supported])
+fi
+
 # Check for libnettle
 saved_LIBS=$LIBS
 LIBS=
