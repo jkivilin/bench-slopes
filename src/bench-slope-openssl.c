@@ -86,6 +86,7 @@ static const char * const openssl_ciphers[] =
   "aria-192",
   "aria-256",
   "chacha20",
+  "sm4",
   NULL
 };
 
@@ -367,6 +368,7 @@ static const char *openssl_hashes[] =
   "sha3-512",
   "shake128",
   "shake256",
+  "sm3",
   NULL
 };
 
