@@ -158,6 +158,7 @@ plot_blockcipher "SEED" seed SEED &
 plot_blockcipher "3DES" des-ede3 des3 3DES &
 plot_blockcipher "Blowfish" bf blowfish Blowfish BLOWFISH &
 plot_blockcipher "CAST5" cast5 cast128 CAST-128 CAST5 &
+plot_blockcipher "SM4" SM4 sm4 &
 
 do_plot cipher "RC4" "STREAM-dec_" "_STREAM" rc4 RC4 arcfour ARCFOUR &
 do_plot cipher "ChaCha20" "STREAM-dec_" "_STREAM" chacha20 chacha CHACHA20 ChaCha &
@@ -172,7 +173,7 @@ do_plot hash "BLAKE2S-256" "" "" BLAKE2s256 BLAKE2S_256 &
 do_plot hash "BLAKE2B-512" "" "" BLAKE2b512 BLAKE2B_512 &
 do_plot hash "RIPEMD160" "" "" RIPEMD160 RIPEMD-160 ripemd160 &
 do_plot hash "Whirlpool" "" "" WHIRLPOOL whirlpool Whirlpool &
-do_plot hash "SM3" "" "" SM3 &
+do_plot hash "SM3" "" "" SM3 sm3 &
 do_plot hash "CRC24" "" "" CRC24 &
 do_plot hash "CRC32" "" "" CRC32 &
 
