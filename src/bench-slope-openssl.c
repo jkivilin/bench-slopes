@@ -241,6 +241,35 @@ static const struct bench_cipher_mode cipher_modes[] = {
 };
 
 
+static int
+cipher_check_algo (struct bench_cipher_mode *mode)
+{
+  int keylen;
+  int ret = 0;
+
+  mode->hd = EVP_CIPHER_CTX_new();
+  keylen = EVP_CIPHER_key_length(mode->algo);
+  if (keylen)
+    {
+      unsigned char key[keylen];
+      int i;
+
+      for (i = 0; i < keylen; i++)
+	key[i] = 0x33 ^ (11 - i);
+
+      ret = EVP_EncryptInit_ex(mode->hd, mode->algo, NULL, key, NULL);
+      if (ret == 1)
+        {
+          EVP_CIPHER_CTX_cleanup(mode->hd);
+          EVP_CIPHER_CTX_free(mode->hd);
+          mode->hd = NULL;
+        }
+    }
+
+  return (ret == 1);
+}
+
+
 static void
 cipher_bench_one (const char *algo, const struct bench_cipher_mode *pmode)
 {
@@ -278,6 +307,9 @@ cipher_bench_one (const char *algo, const struct bench_cipher_mode *pmode)
       blklen = EVP_CIPHER_block_size(mode.algo);
       blklen = blklen > 0 ? blklen : 1;
     }
+
+  if (!cipher_check_algo(&mode))
+    return;
 
   /* Stream cipher? Only test with "ECB" or "POLY1305". */
   if (blklen == 1 && (strncmp(mode.name, "ECB", 3) != 0 &&
@@ -430,6 +462,26 @@ static struct bench_hash_mode hash_modes[] = {
 };
 
 
+static int
+hash_check_algo (struct bench_hash_mode *mode)
+{
+  int ret = 0;
+
+  mode->hd = EVP_MD_CTX_create();
+  if (mode->hd)
+    {
+      ret = EVP_DigestInit_ex(mode->hd, mode->algo, NULL);
+      if (ret == 1)
+        {
+          EVP_MD_CTX_destroy(mode->hd);
+          mode->hd = NULL;
+        }
+    }
+
+  return (ret == 1);
+}
+
+
 static void
 hash_bench_one (const EVP_MD *algo, struct bench_hash_mode *pmode)
 {
@@ -438,6 +490,9 @@ hash_bench_one (const EVP_MD *algo, struct bench_hash_mode *pmode)
   double result;
 
   mode.algo = algo;
+
+  if (!hash_check_algo(&mode))
+    return;
 
   if (mode.name[0] == '\0')
     bench_print_algo (-14, EVP_MD_name (algo));
