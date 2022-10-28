@@ -133,7 +133,7 @@ Each program can be compiled also directly. For example:
 <pre>
 $ gcc -O2 -DHAVE_CLOCK_GETTIME src/slope.c src/bench-slope-gcrypt.c -o bench-slope -I /usr/include -l gcrypt -l gpg-error
 $ ./bench-slope 
-bench-slope-gcrypt: libgcrypt: 1.8.5
+bench-slope-gcrypt: libgcrypt: 1.10.1
 ...
 </pre>
 
@@ -142,7 +142,7 @@ bench-slope-gcrypt: libgcrypt: 1.8.5
 Command-line help can be shown for each program with --help option:
 <pre>
 $ src/bench-slope-gcrypt --help
-bench-slope-gcrypt: libgcrypt: 1.8.5
+bench-slope-gcrypt: libgcrypt: 1.10.1
 usage: bench-slope-gcrypt [options] [hash|mac|cipher|kdf]
 
  options:
@@ -153,6 +153,7 @@ usage: bench-slope-gcrypt [options] [hash|mac|cipher|kdf]
    --unaligned               Use unaligned input buffers.
    --csv                     Use CSV output format
    --raw                     Output raw benchmark data in CSV output format
+   --machine <name>          Machine name used for raw benchmark files
 </pre>
 
 # Running benchmarks
@@ -212,7 +213,7 @@ Hash:
  SHA512         |      1.09 ns/B     877.6 MiB/s         - c/B
 </pre>
 
-## CPU Mhz and 'cycles per byte' results, --cpu-mhz
+## CPU Mhz and 'cycles per byte' results, --cpu-mhz <mhz>
 
 If you know clock frequency of the CPU on which benchmarks are run, you can supply
 CPU Mhz value with '--cpu-mhz &lt;mhz&gt;' option. With help of this information, bench-slope
@@ -252,7 +253,7 @@ Hash:
  RIPEMD160      |      1.82 ns/B     524.0 MiB/s      7.89 c/B    4336.7
 </pre>
 
-## Number of repetitions, --repetitions
+## Number of repetitions, --repetitions <n>
 
 Number of repetitions option controls accuracy and time which benchmarks
 take to run. Higher number of repetitions generally give more accurate and
@@ -281,6 +282,10 @@ hash,RIPEMD160,,,,1.82,ns/B,524.7,MiB/s,7.95,c/B,4374.1,Mhz
 
 TODO: Describe raw mode, which is completely different from normal mode.
 TODO: Describe 'plot_raw_results.sh'
+
+## Machine name, --machine <name>
+
+TODO: Describe (used with --raw)
 
 # License
 

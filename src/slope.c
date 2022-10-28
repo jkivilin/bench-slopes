@@ -1052,6 +1052,7 @@ print_help (const struct bench_group *bench_groups, const char *pgm)
     "   --unaligned               Use unaligned input buffers.",
     "   --csv                     Use CSV output format",
     "   --raw                     Output raw benchmark data in CSV output format",
+    "   --machine <name>          Machine name used for raw benchmark files",
     NULL
   };
   const char **line;
