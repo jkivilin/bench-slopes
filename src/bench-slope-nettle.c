@@ -137,7 +137,7 @@ static const struct nettle_cipher nettle_chacha =
     (nettle_cipher_func *) chacha_crypt
   };
 
-static const struct nettle_cipher * const nettle_ciphers2[] =
+static const struct nettle_cipher * const nettle_ciphers_extra[] =
 {
   &nettle_aes128,
   &nettle_aes192,
@@ -161,6 +161,8 @@ static const struct nettle_cipher * const nettle_ciphers2[] =
   &nettle_chacha,
   NULL
 };
+
+static const struct nettle_cipher **nettle_ciphers2;
 
 
 static int cipher_map_name(const char *name)
@@ -723,7 +725,7 @@ struct bench_hash_mode
   struct md_ctx_s *hd;
 };
 
-static const struct nettle_hash * const nettle_hashes2[] =
+static const struct nettle_hash * const nettle_hashes_extra[] =
 {
   &nettle_md2,
   &nettle_md4,
@@ -743,6 +745,9 @@ static const struct nettle_hash * const nettle_hashes2[] =
   &nettle_sha3_512,
   NULL
 };
+
+static const struct nettle_hash **nettle_hashes2;
+
 
 static int md_map_name(const char *name)
 {
@@ -915,6 +920,36 @@ hash_bench (char **argv, int argc)
 
 /************************************************************** Main program. */
 
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+
+static int
+count_pointers(const void * const *list)
+{
+  const void * const *p;
+  int pos;
+
+  for (pos = 0, p = list; *p; pos++, p++);
+
+  return pos;
+}
+
+static void
+combine_pointer_lists(const void **dst, int dst_size, const void * const *src)
+{
+  const void * const *p;
+  const void * const *p2;
+  int i, pos;
+
+  for (pos = count_pointers(dst), i = 0, p = src; *p; i++, p++)
+    {
+      for (p2 = dst; *p2 && *p != *p2; p2++);
+
+      if (!*p2 && pos < dst_size)
+	dst[pos++] = *p;
+    }
+
+  dst[dst_size - 1] = NULL;
+}
 
 int
 main (int argc, char **argv)
@@ -925,12 +960,35 @@ main (int argc, char **argv)
       { "cipher", cipher_bench },
       { NULL, NULL }
     };
+  int list_size;
+  int ret;
 
   printf("%s: Nettle %d.%d\n", PGM,
          nettle_version_major(),
          nettle_version_minor());
 
-  return slope_main_template(argc, argv, groups, PGM, LIBNAME);
+  list_size = 1;
+  list_size += count_pointers((const void * const *)nettle_ciphers_extra);
+  list_size += count_pointers((const void * const *)nettle_ciphers);
+  nettle_ciphers2 = calloc(list_size, sizeof(void *));
+  combine_pointer_lists((const void **)nettle_ciphers2, list_size,
+			(const void * const *)nettle_ciphers_extra);
+  combine_pointer_lists((const void **)nettle_ciphers2, list_size,
+			(const void * const *)nettle_ciphers);
+
+  list_size = 1;
+  list_size += count_pointers((const void * const *)nettle_hashes_extra);
+  list_size += count_pointers((const void * const *)nettle_hashes);
+  nettle_hashes2 = calloc(list_size, sizeof(void *));
+  combine_pointer_lists((const void **)nettle_hashes2, list_size,
+			(const void * const *)nettle_hashes_extra);
+  combine_pointer_lists((const void **)nettle_hashes2, list_size,
+			(const void * const *)nettle_hashes);
+
+  ret = slope_main_template(argc, argv, groups, PGM, LIBNAME);
+  free(nettle_ciphers2);
+  free(nettle_hashes2);
+  return ret;
 }
 
 #endif /* HAVE_LIBNETTLE */
