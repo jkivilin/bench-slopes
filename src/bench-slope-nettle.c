@@ -59,6 +59,7 @@ int main(void)
 #include <nettle/chacha.h>
 #if HEADER_NETTLE_VERSION >= 309
 #include <nettle/ocb.h>
+#include <nettle/siv_gcm.h>
 #endif
 
 #ifndef STR
@@ -140,6 +141,44 @@ compat_prepare_ocb(void)
 
 static void
 compat_prepare_ocb(void)
+{
+}
+
+#endif /* HEADER_NETTLE_VERSION < 309 */
+
+#if HEADER_NETTLE_VERSION < 309
+
+#define SIV_GCM_BLOCK_SIZE 16
+#define SIV_GCM_DIGEST_SIZE 16
+#define SIV_GCM_NONCE_SIZE 12
+
+void (* siv_gcm_encrypt_message)(const struct nettle_cipher *nc,
+				 const void *ctx, void *ctr_ctx,
+				 size_t nlength, const uint8_t *nonce,
+				 size_t alength, const uint8_t *adata,
+				 size_t clength, uint8_t *dst,
+				 const uint8_t *src);
+
+int (* siv_gcm_decrypt_message)(const struct nettle_cipher *nc,
+				const void *ctx, void *ctr_ctx,
+				size_t nlength, const uint8_t *nonce,
+				size_t alength, const uint8_t *adata,
+				size_t mlength, uint8_t *dst,
+				const uint8_t *src);
+
+static void
+compat_prepare_siv_gcm(void)
+{
+#ifdef HAVE_DLSYM
+  siv_gcm_encrypt_message = dlsym(NULL, "nettle_siv_gcm_encrypt_message");
+  siv_gcm_decrypt_message = dlsym(NULL, "nettle_siv_gcm_decrypt_message");
+#endif
+}
+
+#else /* HEADER_NETTLE_VERSION < 309 */
+
+static void
+compat_prepare_siv_gcm(void)
 {
 }
 
@@ -939,6 +978,77 @@ static struct bench_ops ocb_authenticate_ops = {
 };
 
 
+static int
+bench_siv_gcm_crypt_init (struct bench_obj *obj)
+{
+  obj->extra_alloc_size = SIV_GCM_DIGEST_SIZE;
+  return bench_encrypt_init (obj);
+}
+
+static void
+bench_siv_gcm_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
+{
+  static const unsigned char nonce[12] = {
+    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xc9, 0xf8, 0xb7, 0xb6 };
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
+  uint64_t ctr_ctx[(c->context_size + 7) / 8];
+
+  siv_gcm_encrypt_message (c, hd->ctx, ctr_ctx, sizeof(nonce), nonce, 0, NULL,
+			   buflen + SIV_GCM_DIGEST_SIZE, buf, buf);
+}
+
+static void
+bench_siv_gcm_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
+{
+  static const unsigned char nonce[12] = {
+    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xc9, 0xf8, 0xb7, 0xb6 };
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
+  uint64_t ctr_ctx[(c->context_size + 7) / 8];
+
+  siv_gcm_decrypt_message (c, hd->ctx, ctr_ctx, sizeof(nonce), nonce, 0, NULL,
+			   buflen + SIV_GCM_DIGEST_SIZE, buf, buf);
+}
+
+static void
+bench_siv_gcm_authenticate_do_bench (struct bench_obj *obj, void *buf,
+				     size_t buflen)
+{
+  static const unsigned char nonce[12] = {
+    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xc9, 0xf8, 0xb7, 0xb6 };
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
+  uint64_t ctr_ctx[(c->context_size + 7) / 8];
+  unsigned char tag[SIV_GCM_DIGEST_SIZE] = { 0 };
+
+  siv_gcm_encrypt_message (c, hd->ctx, ctr_ctx, sizeof(nonce), nonce, buflen,
+			   buf, SIV_GCM_DIGEST_SIZE, tag, tag);
+}
+
+
+static struct bench_ops siv_gcm_encrypt_ops = {
+  &bench_siv_gcm_crypt_init,
+  &bench_crypt_free,
+  &bench_siv_gcm_encrypt_do_bench
+};
+
+static struct bench_ops siv_gcm_decrypt_ops = {
+  &bench_siv_gcm_crypt_init,
+  &bench_crypt_free,
+  &bench_siv_gcm_decrypt_do_bench
+};
+
+static struct bench_ops siv_gcm_authenticate_ops = {
+  &bench_siv_gcm_crypt_init,
+  &bench_crypt_free,
+  &bench_siv_gcm_authenticate_do_bench
+};
+
+
 static struct bench_cipher_mode cipher_modes[] = {
   {"ECB enc", &ecb_encrypt_ops, NULL},
   {"ECB dec", &ecb_decrypt_ops, NULL},
@@ -959,6 +1069,9 @@ static struct bench_cipher_mode cipher_modes[] = {
   {"OCB enc", &ocb_encrypt_ops },
   {"OCB dec", &ocb_decrypt_ops },
   {"OCB auth", &ocb_authenticate_ops },
+  {"GCM-SIV enc", &siv_gcm_encrypt_ops },
+  {"GCM-SIV dec", &siv_gcm_decrypt_ops },
+  {"GCM-SIV auth", &siv_gcm_authenticate_ops },
   {"POLY1305 enc", &poly1305_encrypt_ops, "poly1305"},
   {"POLY1305 dec", &poly1305_decrypt_ops, "poly1305"},
   {"POLY1305 auth", &poly1305_authenticate_ops, "poly1305"},
@@ -986,6 +1099,15 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   /* OCB? Check if supported by loaded library. */
   if (strncmp(mode.name, "OCB", 3) == 0
       && !(ocb_set_key && ocb_encrypt_message && ocb_decrypt_message))
+    return;
+
+  /* GCM-SIV? Only test 128-bit block ciphers. */
+  if (strncmp(mode.name, "GCM-SIV", 7) == 0 && blklen != 16)
+    return;
+
+  /* GCM-SIV? Check if supported by loaded library. */
+  if (strncmp(mode.name, "GCM-SIV", 7) == 0
+      && !(siv_gcm_encrypt_message && siv_gcm_decrypt_message))
     return;
 
   /* XTS? Only test 128-bit block ciphers. */
@@ -1321,6 +1443,7 @@ main (int argc, char **argv)
 
   compat_prepare_cbc_aes_encrypt();
   compat_prepare_ocb();
+  compat_prepare_siv_gcm();
 
   list_size = 1;
   list_size += count_pointers((const void * const *)nettle_ciphers_extra);
