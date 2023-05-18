@@ -61,6 +61,8 @@ PKG_CHECK_MODULES([OPENSSL],[openssl >= 0.98],
                   [AC_DEFINE(NO_OPENSSL,1,"Does not have OpenSSL >= 0.98")])
 
 # Check for libgcrypt
+AM_PATH_LIBGCRYPT("1.10.0",[AC_DEFINE(HAVE_LIBGCRYPT_1_10,1,"Have libgcrypt >= 1.10")])
+AM_PATH_LIBGCRYPT("1.9.0",[AC_DEFINE(HAVE_LIBGCRYPT_1_9,1,"Have libgcrypt >= 1.9")])
 AM_PATH_LIBGCRYPT("1.8.0",[AC_DEFINE(HAVE_LIBGCRYPT_1_8,1,"Have libgcrypt >= 1.8")])
 AM_PATH_LIBGCRYPT("1.6.0",[AC_DEFINE(HAVE_LIBGCRYPT_1_6,1,"Have libgcrypt >= 1.6")])
 AM_PATH_GPG_ERROR("1.0")

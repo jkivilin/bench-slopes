@@ -1,5 +1,5 @@
 /* bench-slope-gcrypt.c - for libgcrypt
- * Copyright (C) 2013,2017-2020 Jussi Kivilinna <jussi.kivilinna@iki.fi>
+ * Copyright (C) 2013,2017-2023 Jussi Kivilinna <jussi.kivilinna@iki.fi>
  *
  * This file is part of Bench-slopes.
  *
@@ -83,6 +83,10 @@ bench_encrypt_init (struct bench_obj *obj)
     }
 
   keylen = gcry_cipher_get_algo_keylen (mode->algo);
+#ifdef HAVE_LIBGCRYPT_1_10
+  keylen *= (mode->mode == GCRY_CIPHER_MODE_SIV) + 1;
+#endif
+
   if (keylen)
     {
       char key[keylen];
@@ -415,6 +419,7 @@ bench_aead_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen,
   int err;
   char tag[16];
 
+  gcry_cipher_reset (hd);
   gcry_cipher_setiv (hd, nonce, noncelen);
 
   gcry_cipher_final (hd);
@@ -446,13 +451,18 @@ bench_aead_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen,
   int err;
   char tag[16] = { 0, };
 
+  gcry_cipher_reset (hd);
+  gcry_cipher_set_decryption_tag (hd, tag, 16);
+
   gcry_cipher_setiv (hd, nonce, noncelen);
 
   gcry_cipher_final (hd);
   err = gcry_cipher_decrypt (hd, buf, buflen, buf, buflen);
+  if (gpg_err_code (err) == GPG_ERR_CHECKSUM)
+    err = gpg_error (GPG_ERR_NO_ERROR);
   if (err)
     {
-      fprintf (stderr, PGM ": gcry_cipher_encrypt failed: %s\n",
+      fprintf (stderr, PGM ": gcry_cipher_decrypt failed: %s\n",
            gpg_strerror (err));
       gcry_cipher_close (hd);
       exit (1);
@@ -481,13 +491,18 @@ bench_aead_authenticate_do_bench (struct bench_obj *obj, void *buf,
   char tag[16] = { 0, };
   char data = 0xff;
 
-  err = gcry_cipher_setiv (hd, nonce, noncelen);
-  if (err)
+  gcry_cipher_reset (hd);
+
+  if (noncelen > 0)
     {
-      fprintf (stderr, PGM ": gcry_cipher_setiv failed: %s\n",
-           gpg_strerror (err));
-      gcry_cipher_close (hd);
-      exit (1);
+      err = gcry_cipher_setiv (hd, nonce, noncelen);
+      if (err)
+	{
+	  fprintf (stderr, PGM ": gcry_cipher_setiv failed: %s\n",
+	       gpg_strerror (err));
+	  gcry_cipher_close (hd);
+	  exit (1);
+	}
     }
 
   err = gcry_cipher_authenticate (hd, buf, buflen);
@@ -608,11 +623,149 @@ static struct bench_ops ocb_decrypt_ops = {
   &bench_ocb_decrypt_do_bench
 };
 
+
+#ifdef HAVE_LIBGCRYPT_1_10
 static struct bench_ops ocb_authenticate_ops = {
   &bench_encrypt_init,
   &bench_encrypt_free,
   &bench_ocb_authenticate_do_bench
 };
+static void
+bench_siv_encrypt_do_bench (struct bench_obj *obj, void *buf,
+			    size_t buflen)
+{
+  bench_aead_encrypt_do_bench (obj, buf, buflen, NULL, 0);
+}
+
+static void
+bench_siv_decrypt_do_bench (struct bench_obj *obj, void *buf,
+			    size_t buflen)
+{
+  bench_aead_decrypt_do_bench (obj, buf, buflen, NULL, 0);
+}
+
+static void
+bench_siv_authenticate_do_bench (struct bench_obj *obj, void *buf,
+				 size_t buflen)
+{
+  bench_aead_authenticate_do_bench (obj, buf, buflen, NULL, 0);
+}
+
+static struct bench_ops siv_encrypt_ops = {
+  &bench_encrypt_init,
+  &bench_encrypt_free,
+  &bench_siv_encrypt_do_bench
+};
+
+static struct bench_ops siv_decrypt_ops = {
+  &bench_encrypt_init,
+  &bench_encrypt_free,
+  &bench_siv_decrypt_do_bench
+};
+
+static struct bench_ops siv_authenticate_ops = {
+  &bench_encrypt_init,
+  &bench_encrypt_free,
+  &bench_siv_authenticate_do_bench
+};
+
+
+static void
+bench_gcm_siv_encrypt_do_bench (struct bench_obj *obj, void *buf,
+				size_t buflen)
+{
+  char nonce[12] = { 0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce,
+                     0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88 };
+  bench_aead_encrypt_do_bench (obj, buf, buflen, nonce, sizeof(nonce));
+}
+
+static void
+bench_gcm_siv_decrypt_do_bench (struct bench_obj *obj, void *buf,
+				size_t buflen)
+{
+  char nonce[12] = { 0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce,
+                     0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88 };
+  bench_aead_decrypt_do_bench (obj, buf, buflen, nonce, sizeof(nonce));
+}
+
+static void
+bench_gcm_siv_authenticate_do_bench (struct bench_obj *obj, void *buf,
+				     size_t buflen)
+{
+  char nonce[12] = { 0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce,
+                     0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88 };
+  bench_aead_authenticate_do_bench (obj, buf, buflen, nonce, sizeof(nonce));
+}
+
+static struct bench_ops gcm_siv_encrypt_ops = {
+  &bench_encrypt_init,
+  &bench_encrypt_free,
+  &bench_gcm_siv_encrypt_do_bench
+};
+
+static struct bench_ops gcm_siv_decrypt_ops = {
+  &bench_encrypt_init,
+  &bench_encrypt_free,
+  &bench_gcm_siv_decrypt_do_bench
+};
+
+static struct bench_ops gcm_siv_authenticate_ops = {
+  &bench_encrypt_init,
+  &bench_encrypt_free,
+  &bench_gcm_siv_authenticate_do_bench
+};
+#endif /* HAVE_LIBGCRYPT_1_10 */
+
+
+#ifdef HAVE_LIBGCRYPT_1_9
+static void
+bench_eax_encrypt_do_bench (struct bench_obj *obj, void *buf,
+			    size_t buflen)
+{
+  char nonce[16] = { 0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce,
+                     0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88,
+                     0x00, 0x00, 0x01, 0x00 };
+  bench_aead_encrypt_do_bench (obj, buf, buflen, nonce, sizeof(nonce));
+}
+
+static void
+bench_eax_decrypt_do_bench (struct bench_obj *obj, void *buf,
+			    size_t buflen)
+{
+  char nonce[16] = { 0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce,
+                     0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88,
+                     0x00, 0x00, 0x01, 0x00 };
+  bench_aead_decrypt_do_bench (obj, buf, buflen, nonce, sizeof(nonce));
+}
+
+static void
+bench_eax_authenticate_do_bench (struct bench_obj *obj, void *buf,
+				 size_t buflen)
+{
+  char nonce[16] = { 0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce,
+                     0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88,
+                     0x00, 0x00, 0x01, 0x00 };
+  bench_aead_authenticate_do_bench (obj, buf, buflen, nonce, sizeof(nonce));
+}
+
+static struct bench_ops eax_encrypt_ops = {
+  &bench_encrypt_init,
+  &bench_encrypt_free,
+  &bench_eax_encrypt_do_bench
+};
+
+static struct bench_ops eax_decrypt_ops = {
+  &bench_encrypt_init,
+  &bench_encrypt_free,
+  &bench_eax_decrypt_do_bench
+};
+
+static struct bench_ops eax_authenticate_ops = {
+  &bench_encrypt_init,
+  &bench_encrypt_free,
+  &bench_eax_authenticate_do_bench
+};
+#endif /* HAVE_LIBGCRYPT_1_9 */
 
 
 static void
@@ -676,12 +829,25 @@ static struct bench_cipher_mode cipher_modes[] = {
   {GCRY_CIPHER_MODE_CCM, "CCM enc", &ccm_encrypt_ops},
   {GCRY_CIPHER_MODE_CCM, "CCM dec", &ccm_decrypt_ops},
   {GCRY_CIPHER_MODE_CCM, "CCM auth", &ccm_authenticate_ops},
+#ifdef HAVE_LIBGCRYPT_1_9
+  {GCRY_CIPHER_MODE_EAX, "EAX enc", &eax_encrypt_ops},
+  {GCRY_CIPHER_MODE_EAX, "EAX dec", &eax_decrypt_ops},
+  {GCRY_CIPHER_MODE_EAX, "EAX auth", &eax_authenticate_ops},
+#endif
   {GCRY_CIPHER_MODE_GCM, "GCM enc", &gcm_encrypt_ops},
   {GCRY_CIPHER_MODE_GCM, "GCM dec", &gcm_decrypt_ops},
   {GCRY_CIPHER_MODE_GCM, "GCM auth", &gcm_authenticate_ops},
   {GCRY_CIPHER_MODE_OCB, "OCB enc",  &ocb_encrypt_ops},
   {GCRY_CIPHER_MODE_OCB, "OCB dec",  &ocb_decrypt_ops},
   {GCRY_CIPHER_MODE_OCB, "OCB auth", &ocb_authenticate_ops},
+#ifdef HAVE_LIBGCRYPT_1_10
+  {GCRY_CIPHER_MODE_SIV, "SIV enc", &siv_encrypt_ops},
+  {GCRY_CIPHER_MODE_SIV, "SIV dec", &siv_decrypt_ops},
+  {GCRY_CIPHER_MODE_SIV, "SIV auth", &siv_authenticate_ops},
+  {GCRY_CIPHER_MODE_GCM_SIV, "GCM-SIV enc", &gcm_siv_encrypt_ops},
+  {GCRY_CIPHER_MODE_GCM_SIV, "GCM-SIV dec", &gcm_siv_decrypt_ops},
+  {GCRY_CIPHER_MODE_GCM_SIV, "GCM-SIV auth", &gcm_siv_authenticate_ops},
+#endif
   {GCRY_CIPHER_MODE_POLY1305, "POLY1305 enc", &poly1305_encrypt_ops},
   {GCRY_CIPHER_MODE_POLY1305, "POLY1305 dec", &poly1305_decrypt_ops},
   {GCRY_CIPHER_MODE_POLY1305, "POLY1305 auth", &poly1305_authenticate_ops},
@@ -696,12 +862,17 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   struct bench_obj obj = { 0 };
   double result;
   unsigned int blklen;
+  unsigned int keylen;
 
   mode.algo = algo;
 
   /* Check if this mode is ok */
   blklen = gcry_cipher_get_algo_blklen (algo);
   if (!blklen)
+    return;
+
+  keylen = gcry_cipher_get_algo_keylen (algo);
+  if (!keylen)
     return;
 
   /* Stream cipher? Only test with "ECB" and POLY1305. */
@@ -730,6 +901,22 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   /* XTS has restrictions for block-size */
   if (mode.mode == GCRY_CIPHER_MODE_XTS && blklen != GCRY_XTS_BLOCK_LEN)
     return;
+#endif
+
+#ifdef HAVE_LIBGCRYPT_1_10
+  /* SIV has restrictions for block-size */
+  if (mode.mode == GCRY_CIPHER_MODE_SIV && blklen != GCRY_SIV_BLOCK_LEN)
+    return;
+
+  /* GCM-SIV has restrictions for block-size */
+  if (mode.mode == GCRY_CIPHER_MODE_GCM_SIV && blklen != GCRY_SIV_BLOCK_LEN)
+    return;
+
+  /* GCM-SIV has restrictions for key length */
+  if (mode.mode == GCRY_CIPHER_MODE_GCM_SIV && !(keylen == 16 || keylen == 32))
+    return;
+#else
+  (void)keylen;
 #endif
 
   /* Our OCB implementaion has restrictions for block-size.  */
