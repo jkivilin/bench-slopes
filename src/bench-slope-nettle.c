@@ -32,6 +32,8 @@ int main(void)
 
 #else /* HAVE_LIBNETTLE */
 
+#include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <assert.h>
@@ -43,6 +45,7 @@ int main(void)
 #include <nettle/nettle-meta.h>
 #include <nettle/cbc.h>
 #include <nettle/ctr.h>
+#include <nettle/xts.h>
 #include <nettle/blowfish.h>
 #include <nettle/des.h>
 #include <nettle/arcfour.h>
@@ -69,7 +72,8 @@ struct cipher_ctx_s
     const struct nettle_aead *aead;
   };
   void *iv;
-  unsigned char ctx[] __attribute__((aligned(32)));
+  uint64_t align64;
+  unsigned char ctx[];
 };
 
 struct bench_cipher_mode
@@ -199,12 +203,12 @@ static const char *cipher_algo_name(int algo)
   return NULL;
 }
 
-static struct cipher_ctx_s *cipher_open(int algo)
+static struct cipher_ctx_s *cipher_open(const struct nettle_cipher *c,
+					unsigned int num_ctx)
 {
-  const struct nettle_cipher *c = cipher_algo(algo);
   struct cipher_ctx_s *ctx;
 
-  ctx = calloc(1, sizeof(*ctx) + c->context_size);
+  ctx = calloc(1, sizeof(*ctx) + c->context_size * num_ctx);
   if (!ctx)
     return NULL;
 
@@ -226,13 +230,14 @@ bench_crypt_init (struct bench_obj *obj, int encrypt)
   struct bench_cipher_mode *mode = obj->priv;
   const struct nettle_cipher *c = cipher_algo(mode->algo);
   struct cipher_ctx_s *hd;
+  bool is_xts = (strncmp(mode->name, "XTS", 3) == 0);
   int keylen;
 
   obj->min_bufsize = BUF_START_SIZE;
   obj->max_bufsize = BUF_END_SIZE;
   obj->step_size = BUF_STEP_SIZE;
 
-  hd = cipher_open (mode->algo);
+  hd = cipher_open (c, is_xts ? 2 : 1);
   if (!hd)
     {
       fprintf (stderr, PGM ": error opening cipher `%s'\n",
@@ -253,6 +258,15 @@ bench_crypt_init (struct bench_obj *obj, int encrypt)
 	c->set_encrypt_key(&hd->ctx, key);
       else
 	c->set_decrypt_key(&hd->ctx, key);
+
+      if (is_xts)
+	{
+	  for (i = 0; i < keylen; i++)
+	    key[i] = 0x77 ^ (55 - i);
+
+	  /* setup tweak context */
+	  c->set_encrypt_key(&hd->ctx[hd->c->context_size], key);
+	}
     }
   else
     {
@@ -336,6 +350,26 @@ bench_ctr_crypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 	     buflen, buf, buf);
 }
 
+static void
+bench_xts_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
+{
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+
+  xts_encrypt_message(&hd->ctx, &hd->ctx[hd->c->context_size],
+		      hd->c->encrypt, hd->iv, buflen, buf, buf);
+}
+
+static void
+bench_xts_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
+{
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+
+  xts_decrypt_message(&hd->ctx, &hd->ctx[hd->c->context_size],
+		      hd->c->decrypt, hd->c->encrypt, hd->iv, buflen, buf, buf);
+}
+
 static struct bench_ops ecb_encrypt_ops = {
   &bench_encrypt_init,
   &bench_crypt_free,
@@ -364,6 +398,18 @@ static struct bench_ops ctr_crypt_ops = {
   &bench_encrypt_init,
   &bench_crypt_free,
   &bench_ctr_crypt_do_bench
+};
+
+static struct bench_ops xts_encrypt_ops = {
+  &bench_encrypt_init,
+  &bench_crypt_free,
+  &bench_xts_encrypt_do_bench
+};
+
+static struct bench_ops xts_decrypt_ops = {
+  &bench_encrypt_init,
+  &bench_crypt_free,
+  &bench_xts_decrypt_do_bench
 };
 
 
@@ -615,6 +661,8 @@ static struct bench_cipher_mode cipher_modes[] = {
   {"CBC dec", &cbc_decrypt_ops, NULL},
   {"CTR enc", &ctr_crypt_ops, NULL},
   {"CTR dec", &ctr_crypt_ops, NULL},
+  {"XTS enc", &xts_encrypt_ops, NULL},
+  {"XTS dec", &xts_decrypt_ops, NULL},
   {"GCM enc", &gcm_encrypt_ops, "gcm"},
   {"GCM dec", &gcm_decrypt_ops, "gcm"},
   {"GCM auth", &gcm_authenticate_ops, "gcm"},
@@ -643,6 +691,10 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   mode.algo = algo;
 
   blklen = c->block_size ? c->block_size : 1;
+
+  /* XTS? Only test 128-bit block ciphers. */
+  if (strncmp(mode.name, "XTS", 3) == 0 && blklen != 16)
+    return;
 
   /* Stream cipher? Only test with "ECB" or "POLY1305". */
   if (blklen == 1 && (strncmp(mode.name, "ECB", 3) != 0 &&
@@ -716,7 +768,8 @@ cipher_bench (char **argv, int argc)
 struct md_ctx_s
 {
   const struct nettle_hash *h;
-  unsigned char ctx[] __attribute__((aligned(32)));
+  uint64_t align64;
+  unsigned char ctx[];
 };
 
 struct bench_hash_mode
