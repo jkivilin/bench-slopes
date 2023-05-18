@@ -27,6 +27,7 @@ AC_TYPE_UINT64_T
 AC_FUNC_MALLOC
 AC_SEARCH_LIBS([clock_gettime],[rt posix4])
 AC_CHECK_FUNCS([clock_gettime gettimeofday strdup])
+AC_CHECK_FUNCS([dlsym])
 
 #
 # Check whether the compiler supports inline assembly memory barrier.

@@ -39,10 +39,14 @@ int main(void)
 #include <assert.h>
 #include <time.h>
 #include <string.h>
+#ifdef HAVE_DLSYM
+#include <dlfcn.h>
+#endif
 
 #include "slope.h"
 
 #include <nettle/version.h>
+#define HEADER_NETTLE_VERSION (100*NETTLE_VERSION_MAJOR + NETTLE_VERSION_MINOR)
 #include <nettle/nettle-meta.h>
 #include <nettle/cbc.h>
 #include <nettle/cfb.h>
@@ -62,6 +66,34 @@ int main(void)
 #define LIBNAME "nettle"
 #define PGM "bench-slope-" LIBNAME
 
+/************************************ Old header forward compatibility hacks. */
+
+#if HEADER_NETTLE_VERSION < 308
+void (* cbc_aes128_encrypt)(const struct aes128_ctx *ctx, uint8_t *iv,
+			    size_t length, uint8_t *dst, const uint8_t *src);
+void (* cbc_aes192_encrypt)(const struct aes192_ctx *ctx, uint8_t *iv,
+			    size_t length, uint8_t *dst, const uint8_t *src);
+void (* cbc_aes256_encrypt)(const struct aes256_ctx *ctx, uint8_t *iv,
+			    size_t length, uint8_t *dst, const uint8_t *src);
+
+static void
+compat_prepare_cbc_aes_encrypt(void)
+{
+#ifdef HAVE_DLSYM
+  cbc_aes128_encrypt = dlsym(NULL, "nettle_cbc_aes128_encrypt");
+  cbc_aes192_encrypt = dlsym(NULL, "nettle_cbc_aes192_encrypt");
+  cbc_aes256_encrypt = dlsym(NULL, "nettle_cbc_aes256_encrypt");
+#endif
+}
+
+#else /* HEADER_NETTLE_VERSION < 308 */
+
+static void
+compat_prepare_cbc_aes_encrypt(void)
+{
+}
+
+#endif /* HEADER_NETTLE_VERSION < 308 */
 
 /********************************************************* Cipher benchmarks. */
 
@@ -326,9 +358,28 @@ bench_cbc_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
   struct bench_cipher_mode *mode = obj->priv;
   struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
 
-  cbc_encrypt (&hd->ctx, hd->c->encrypt, hd->c->block_size, hd->iv,
-	       buflen, buf, buf);
+  if (strncmp (c->name, "aes", 3) == 0)
+    {
+      if (cbc_aes128_encrypt && strcmp (c->name + 3, "128") == 0)
+	{
+	  cbc_aes128_encrypt ((void *)&hd->ctx, hd->iv, buflen, buf, buf);
+	  return;
+	}
+      else if (cbc_aes192_encrypt && strcmp (c->name + 3, "192") == 0)
+	{
+	  cbc_aes192_encrypt ((void *)&hd->ctx, hd->iv, buflen, buf, buf);
+	  return;
+	}
+      else if (cbc_aes256_encrypt && strcmp (c->name + 3, "256") == 0)
+	{
+	  cbc_aes256_encrypt ((void *)&hd->ctx, hd->iv, buflen, buf, buf);
+	  return;
+	}
+    }
+
+  cbc_encrypt (&hd->ctx, c->encrypt, c->block_size, hd->iv, buflen, buf, buf);
 }
 
 static void
@@ -1057,6 +1108,8 @@ main (int argc, char **argv)
   printf("%s: Nettle %d.%d\n", PGM,
          nettle_version_major(),
          nettle_version_minor());
+
+  compat_prepare_cbc_aes_encrypt();
 
   list_size = 1;
   list_size += count_pointers((const void * const *)nettle_ciphers_extra);
