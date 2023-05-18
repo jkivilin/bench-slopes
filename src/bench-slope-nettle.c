@@ -52,6 +52,8 @@ int main(void)
 #include <nettle/cfb.h>
 #include <nettle/ctr.h>
 #include <nettle/xts.h>
+#include <nettle/gcm.h>
+#include <nettle/eax.h>
 #include <nettle/blowfish.h>
 #include <nettle/des.h>
 #include <nettle/arcfour.h>
@@ -731,53 +733,6 @@ bench_aead_authenticate_do_bench (struct bench_obj *obj, void *buf,
   aead->digest (&hd->ctx, sizeof(tag), tag);
 }
 
-
-static void
-bench_gcm_encrypt_do_bench (struct bench_obj *obj, void *buf,
-			    size_t buflen)
-{
-  static const unsigned char nonce[12] = {
-    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88 };
-  bench_aead_encrypt_do_bench (obj, buf, buflen, nonce, sizeof(nonce));
-}
-
-static void
-bench_gcm_decrypt_do_bench (struct bench_obj *obj, void *buf,
-			    size_t buflen)
-{
-  static const unsigned char nonce[12] = {
-    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88 };
-  bench_aead_decrypt_do_bench (obj, buf, buflen, nonce, sizeof(nonce));
-}
-
-static void
-bench_gcm_authenticate_do_bench (struct bench_obj *obj, void *buf,
-				 size_t buflen)
-{
-  static const unsigned char nonce[12] = {
-    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88 };
-  bench_aead_authenticate_do_bench (obj, buf, buflen, nonce, sizeof(nonce));
-}
-
-static struct bench_ops gcm_encrypt_ops = {
-  &bench_aead_encrypt_init,
-  &bench_crypt_free,
-  &bench_gcm_encrypt_do_bench
-};
-
-static struct bench_ops gcm_decrypt_ops = {
-  &bench_aead_decrypt_init,
-  &bench_crypt_free,
-  &bench_gcm_decrypt_do_bench
-};
-
-static struct bench_ops gcm_authenticate_ops = {
-  &bench_aead_encrypt_init,
-  &bench_crypt_free,
-  &bench_gcm_authenticate_do_bench
-};
-
-
 static void
 bench_poly1305_encrypt_do_bench (struct bench_obj *obj, void *buf,
 				 size_t buflen)
@@ -824,6 +779,240 @@ static struct bench_ops poly1305_authenticate_ops = {
   &bench_aead_encrypt_init,
   &bench_crypt_free,
   &bench_poly1305_authenticate_do_bench
+};
+
+
+static struct cipher_ctx_s *
+gcm_eax_open(const struct nettle_cipher *c, size_t key_ctx_size)
+{
+  struct cipher_ctx_s *ctx;
+
+  ctx = calloc(1, sizeof(*ctx) + key_ctx_size + c->context_size);
+  if (!ctx)
+    return NULL;
+
+  ctx->c = c;
+
+  ctx->iv = calloc(1, 1);
+  if (!ctx->iv)
+    {
+      free(ctx);
+      return NULL;
+    }
+
+  return ctx;
+}
+
+static int
+bench_gcm_eax_crypt_init (struct bench_obj *obj)
+{
+  struct bench_cipher_mode *mode = obj->priv;
+  const struct nettle_cipher *c = cipher_algo(mode->algo);
+  bool is_eax = strncmp(mode->name, "EAX", 3) == 0;
+  struct cipher_ctx_s *hd;
+  int keylen;
+
+  obj->min_bufsize = BUF_START_SIZE;
+  obj->max_bufsize = BUF_END_SIZE;
+  obj->step_size = BUF_STEP_SIZE;
+
+  hd = gcm_eax_open (c, is_eax ? sizeof(struct eax_key)
+			       : sizeof(struct gcm_key));
+  if (!hd)
+    {
+      fprintf (stderr, PGM ": error opening cipher `%s'\n",
+	       cipher_algo_name (mode->algo));
+      exit (1);
+    }
+  else
+    {
+      keylen = c->key_size;
+      if (keylen)
+	{
+	  unsigned char *cipher_ctx = &hd->ctx[0];
+	  unsigned char key[keylen];
+	  int i;
+
+	  for (i = 0; i < keylen; i++)
+	    key[i] = 0x33 ^ (11 - i);
+
+	  c->set_encrypt_key(cipher_ctx, key);
+
+	  if (is_eax)
+	    {
+	      struct eax_key *eax_key = (void *)&hd->ctx[c->context_size];
+
+	      eax_set_key (eax_key, cipher_ctx, c->encrypt);
+	    }
+	  else
+	    {
+	      struct gcm_key *gcm_key = (void *)&hd->ctx[c->context_size];
+
+	      gcm_set_key (gcm_key, cipher_ctx, c->encrypt);
+	    }
+	}
+      else
+	{
+	  fprintf (stderr, PGM ": failed to get key length for algorithm `%s'\n",
+		   cipher_algo_name (mode->algo));
+	  exit (1);
+	}
+    }
+
+  mode->hd = hd;
+
+  return 0;
+}
+
+static void
+bench_gcm_encrypt_do_bench (struct bench_obj *obj, void *buf,
+			    size_t buflen)
+{
+  static const unsigned char nonce[12] = {
+    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88 };
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
+  const unsigned char *cipher_ctx = &hd->ctx[0];
+  const struct gcm_key *gcm_key = (void *)&hd->ctx[c->context_size];
+  unsigned char tag[GCM_DIGEST_SIZE];
+  struct gcm_ctx gctx;
+
+  gcm_set_iv (&gctx, gcm_key, sizeof(nonce), nonce);
+  gcm_encrypt (&gctx, gcm_key, cipher_ctx, c->encrypt, buflen, buf, buf);
+  gcm_digest (&gctx, gcm_key, cipher_ctx, c->encrypt, sizeof(tag), tag);
+}
+
+static void
+bench_gcm_decrypt_do_bench (struct bench_obj *obj, void *buf,
+			    size_t buflen)
+{
+  static const unsigned char nonce[12] = {
+    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88 };
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
+  const unsigned char *cipher_ctx = &hd->ctx[0];
+  const struct gcm_key *gcm_key = (void *)&hd->ctx[c->context_size];
+  unsigned char tag[GCM_DIGEST_SIZE];
+  struct gcm_ctx gctx;
+
+  gcm_set_iv (&gctx, gcm_key, sizeof(nonce), nonce);
+  gcm_decrypt (&gctx, gcm_key, cipher_ctx, c->encrypt, buflen, buf, buf);
+  gcm_digest (&gctx, gcm_key, cipher_ctx, c->encrypt, sizeof(tag), tag);
+}
+
+static void
+bench_gcm_authenticate_do_bench (struct bench_obj *obj, void *buf,
+				 size_t buflen)
+{
+  static const unsigned char nonce[12] = {
+    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88 };
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
+  const unsigned char *cipher_ctx = &hd->ctx[0];
+  const struct gcm_key *gcm_key = (void *)&hd->ctx[c->context_size];
+  unsigned char tag[GCM_DIGEST_SIZE];
+  struct gcm_ctx gctx;
+
+  gcm_set_iv (&gctx, gcm_key, sizeof(nonce), nonce);
+  gcm_update (&gctx, gcm_key, buflen, buf);
+  gcm_digest (&gctx, gcm_key, cipher_ctx, c->encrypt, sizeof(tag), tag);
+}
+
+static struct bench_ops gcm_encrypt_ops = {
+  &bench_gcm_eax_crypt_init,
+  &bench_crypt_free,
+  &bench_gcm_encrypt_do_bench
+};
+
+static struct bench_ops gcm_decrypt_ops = {
+  &bench_gcm_eax_crypt_init,
+  &bench_crypt_free,
+  &bench_gcm_decrypt_do_bench
+};
+
+static struct bench_ops gcm_authenticate_ops = {
+  &bench_gcm_eax_crypt_init,
+  &bench_crypt_free,
+  &bench_gcm_authenticate_do_bench
+};
+
+
+static void
+bench_eax_encrypt_do_bench (struct bench_obj *obj, void *buf,
+			    size_t buflen)
+{
+  static const unsigned char nonce[12] = {
+    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88 };
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
+  const unsigned char *cipher_ctx = &hd->ctx[0];
+  const struct eax_key *eax_key = (void *)&hd->ctx[c->context_size];
+  unsigned char tag[GCM_DIGEST_SIZE];
+  struct eax_ctx ectx;
+
+  eax_set_nonce (&ectx, eax_key, cipher_ctx, c->encrypt, sizeof(nonce), nonce);
+  eax_encrypt (&ectx, eax_key, cipher_ctx, c->encrypt, buflen, buf, buf);
+  eax_digest (&ectx, eax_key, cipher_ctx, c->encrypt, sizeof(tag), tag);
+}
+
+static void
+bench_eax_decrypt_do_bench (struct bench_obj *obj, void *buf,
+			    size_t buflen)
+{
+  static const unsigned char nonce[12] = {
+    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88 };
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
+  const unsigned char *cipher_ctx = &hd->ctx[0];
+  const struct eax_key *eax_key = (void *)&hd->ctx[c->context_size];
+  unsigned char tag[GCM_DIGEST_SIZE];
+  struct eax_ctx ectx;
+
+  eax_set_nonce (&ectx, eax_key, cipher_ctx, c->encrypt, sizeof(nonce), nonce);
+  eax_decrypt (&ectx, eax_key, cipher_ctx, c->encrypt, buflen, buf, buf);
+  eax_digest (&ectx, eax_key, cipher_ctx, c->encrypt, sizeof(tag), tag);
+}
+
+static void
+bench_eax_authenticate_do_bench (struct bench_obj *obj, void *buf,
+				 size_t buflen)
+{
+  static const unsigned char nonce[12] = {
+    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xde, 0xca, 0xf8, 0x88 };
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
+  const unsigned char *cipher_ctx = &hd->ctx[0];
+  const struct eax_key *eax_key = (void *)&hd->ctx[c->context_size];
+  unsigned char tag[GCM_DIGEST_SIZE];
+  struct eax_ctx ectx;
+
+  eax_set_nonce (&ectx, eax_key, cipher_ctx, c->encrypt, sizeof(nonce), nonce);
+  eax_update (&ectx, eax_key, cipher_ctx, c->encrypt, buflen, buf);
+  eax_digest (&ectx, eax_key, cipher_ctx, c->encrypt, sizeof(tag), tag);
+}
+
+static struct bench_ops eax_encrypt_ops = {
+  &bench_gcm_eax_crypt_init,
+  &bench_crypt_free,
+  &bench_eax_encrypt_do_bench
+};
+
+static struct bench_ops eax_decrypt_ops = {
+  &bench_gcm_eax_crypt_init,
+  &bench_crypt_free,
+  &bench_eax_decrypt_do_bench
+};
+
+static struct bench_ops eax_authenticate_ops = {
+  &bench_gcm_eax_crypt_init,
+  &bench_crypt_free,
+  &bench_eax_authenticate_do_bench
 };
 
 
@@ -1060,12 +1249,12 @@ static struct bench_cipher_mode cipher_modes[] = {
   {"CTR dec", &ctr_crypt_ops, NULL},
   {"XTS enc", &xts_encrypt_ops, NULL},
   {"XTS dec", &xts_decrypt_ops, NULL},
-  {"GCM enc", &gcm_encrypt_ops, "gcm"},
-  {"GCM dec", &gcm_decrypt_ops, "gcm"},
-  {"GCM auth", &gcm_authenticate_ops, "gcm"},
-  {"EAX enc", &gcm_encrypt_ops, "eax"},
-  {"EAX dec", &gcm_decrypt_ops, "eax"},
-  {"EAX auth", &gcm_authenticate_ops, "eax"},
+  {"GCM enc", &gcm_encrypt_ops, NULL},
+  {"GCM dec", &gcm_decrypt_ops, NULL},
+  {"GCM auth", &gcm_authenticate_ops, NULL},
+  {"EAX enc", &eax_encrypt_ops, NULL},
+  {"EAX dec", &eax_decrypt_ops, NULL},
+  {"EAX auth", &eax_authenticate_ops, NULL},
   {"OCB enc", &ocb_encrypt_ops },
   {"OCB dec", &ocb_decrypt_ops },
   {"OCB auth", &ocb_authenticate_ops },
@@ -1108,6 +1297,14 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   /* GCM-SIV? Check if supported by loaded library. */
   if (strncmp(mode.name, "GCM-SIV", 7) == 0
       && !(siv_gcm_encrypt_message && siv_gcm_decrypt_message))
+    return;
+
+  /* GCM? Only test 128-bit block ciphers. */
+  if (strncmp(mode.name, "GCM", 3) == 0 && blklen != 16)
+    return;
+
+  /* EAX? Only test 128-bit block ciphers. */
+  if (strncmp(mode.name, "EAX", 3) == 0 && blklen != 16)
     return;
 
   /* XTS? Only test 128-bit block ciphers. */
