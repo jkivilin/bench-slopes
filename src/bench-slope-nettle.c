@@ -42,8 +42,10 @@ int main(void)
 
 #include "slope.h"
 
+#include <nettle/version.h>
 #include <nettle/nettle-meta.h>
 #include <nettle/cbc.h>
+#include <nettle/cfb.h>
 #include <nettle/ctr.h>
 #include <nettle/xts.h>
 #include <nettle/blowfish.h>
@@ -51,7 +53,6 @@ int main(void)
 #include <nettle/arcfour.h>
 #include <nettle/salsa20.h>
 #include <nettle/chacha.h>
-#include <nettle/version.h>
 
 #ifndef STR
 #define STR(v) #v
@@ -341,6 +342,26 @@ bench_cbc_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 }
 
 static void
+bench_cfb_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
+{
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+
+  cfb_encrypt (&hd->ctx, hd->c->encrypt, hd->c->block_size, hd->iv,
+	       buflen, buf, buf);
+}
+
+static void
+bench_cfb_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
+{
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+
+  cfb_decrypt (&hd->ctx, hd->c->decrypt, hd->c->block_size, hd->iv,
+	       buflen, buf, buf);
+}
+
+static void
 bench_ctr_crypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
   struct bench_cipher_mode *mode = obj->priv;
@@ -392,6 +413,18 @@ static struct bench_ops cbc_decrypt_ops = {
   &bench_decrypt_init,
   &bench_crypt_free,
   &bench_cbc_decrypt_do_bench
+};
+
+static struct bench_ops cfb_encrypt_ops = {
+  &bench_encrypt_init,
+  &bench_crypt_free,
+  &bench_cfb_encrypt_do_bench
+};
+
+static struct bench_ops cfb_decrypt_ops = {
+  &bench_decrypt_init,
+  &bench_crypt_free,
+  &bench_cfb_decrypt_do_bench
 };
 
 static struct bench_ops ctr_crypt_ops = {
@@ -659,6 +692,8 @@ static struct bench_cipher_mode cipher_modes[] = {
   {"ECB dec", &ecb_decrypt_ops, NULL},
   {"CBC enc", &cbc_encrypt_ops, NULL},
   {"CBC dec", &cbc_decrypt_ops, NULL},
+  {"CFB enc", &cfb_encrypt_ops, NULL},
+  {"CFB dec", &cfb_decrypt_ops, NULL},
   {"CTR enc", &ctr_crypt_ops, NULL},
   {"CTR dec", &ctr_crypt_ops, NULL},
   {"XTS enc", &xts_encrypt_ops, NULL},
