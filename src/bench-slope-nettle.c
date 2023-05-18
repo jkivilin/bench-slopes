@@ -1,5 +1,5 @@
 /* bench-slope-nettle.c - libgcrypt style benchmark for libnettle
- * Copyright © 2016-2020 Jussi Kivilinna <jussi.kivilinna@iki.fi>
+ * Copyright © 2016-2023 Jussi Kivilinna <jussi.kivilinna@iki.fi>
  *
  * This file is part of Bench-slopes.
  *
@@ -57,6 +57,9 @@ int main(void)
 #include <nettle/arcfour.h>
 #include <nettle/salsa20.h>
 #include <nettle/chacha.h>
+#if HEADER_NETTLE_VERSION >= 309
+#include <nettle/ocb.h>
+#endif
 
 #ifndef STR
 #define STR(v) #v
@@ -94,6 +97,53 @@ compat_prepare_cbc_aes_encrypt(void)
 }
 
 #endif /* HEADER_NETTLE_VERSION < 308 */
+
+#if HEADER_NETTLE_VERSION < 309
+
+#define OCB_BLOCK_SIZE 16
+#define OCB_DIGEST_SIZE 16
+#define OCB_MAX_NONCE_SIZE 15
+
+struct ocb_key {
+  /* L_*, L_$ and L_0, and one reserved entry */
+  union nettle_block16 L[4];
+};
+
+void (* ocb_set_key)(struct ocb_key *key, const void *encrypt_ctx,
+		     nettle_cipher_func *f);
+void (* ocb_encrypt_message)(const struct ocb_key *ocb_key,
+			     const void *encrypt_ctx, nettle_cipher_func *f,
+			     size_t nlength, const uint8_t *nonce,
+			     size_t alength, const uint8_t *adata,
+			     size_t tlength,
+			     size_t clength, uint8_t *dst, const uint8_t *src);
+
+int (* ocb_decrypt_message)(const struct ocb_key *ocb_key,
+			    const void *encrypt_ctx, nettle_cipher_func *en_f,
+			    const void *decrypt_ctx, nettle_cipher_func *de_f,
+			    size_t nlength, const uint8_t *nonce,
+			    size_t alength, const uint8_t *adata,
+			    size_t tlength,
+			    size_t mlength, uint8_t *dst, const uint8_t *src);
+
+static void
+compat_prepare_ocb(void)
+{
+#ifdef HAVE_DLSYM
+  ocb_set_key = dlsym(NULL, "nettle_ocb_set_key");
+  ocb_encrypt_message = dlsym(NULL, "nettle_ocb_encrypt_message");
+  ocb_decrypt_message = dlsym(NULL, "nettle_ocb_decrypt_message");
+#endif
+}
+
+#else /* HEADER_NETTLE_VERSION < 309 */
+
+static void
+compat_prepare_ocb(void)
+{
+}
+
+#endif /* HEADER_NETTLE_VERSION < 309 */
 
 /********************************************************* Cipher benchmarks. */
 
@@ -738,6 +788,157 @@ static struct bench_ops poly1305_authenticate_ops = {
 };
 
 
+static struct cipher_ctx_s *
+ocb_open(const struct nettle_cipher *c)
+{
+  struct cipher_ctx_s *ctx;
+
+  ctx = calloc(1, sizeof(*ctx) + sizeof(struct ocb_key) + c->context_size * 2);
+  if (!ctx)
+    return NULL;
+
+  ctx->c = c;
+
+  ctx->iv = calloc(1, 1);
+  if (!ctx->iv)
+    {
+      free(ctx);
+      return NULL;
+    }
+
+  return ctx;
+}
+
+static int
+bench_ocb_crypt_init (struct bench_obj *obj)
+{
+  struct bench_cipher_mode *mode = obj->priv;
+  const struct nettle_cipher *c = cipher_algo(mode->algo);
+  struct cipher_ctx_s *hd;
+  int keylen;
+
+  obj->min_bufsize = BUF_START_SIZE;
+  obj->max_bufsize = BUF_END_SIZE;
+  obj->step_size = BUF_STEP_SIZE;
+  obj->extra_alloc_size = OCB_DIGEST_SIZE;
+
+  hd = ocb_open (c);
+  if (!hd)
+    {
+      fprintf (stderr, PGM ": error opening cipher `%s'\n",
+	       cipher_algo_name (mode->algo));
+      exit (1);
+    }
+  else
+    {
+      struct ocb_key *ocb_key = (void *)&hd->ctx[0];
+      unsigned char *encrypt_ctx = &hd->ctx[sizeof(struct ocb_key)];
+      unsigned char *decrypt_ctx = &encrypt_ctx[c->context_size];
+
+      keylen = c->key_size;
+      if (keylen)
+	{
+	  unsigned char key[keylen];
+	  int i;
+
+	  for (i = 0; i < keylen; i++)
+	    key[i] = 0x33 ^ (11 - i);
+
+	  c->set_encrypt_key(encrypt_ctx, key);
+	  c->set_decrypt_key(decrypt_ctx, key);
+	  ocb_set_key (ocb_key, encrypt_ctx, c->encrypt);
+	}
+      else
+	{
+	  fprintf (stderr, PGM ": failed to get key length for algorithm `%s'\n",
+		   cipher_algo_name (mode->algo));
+	  exit (1);
+	}
+    }
+
+  mode->hd = hd;
+
+  return 0;
+}
+
+static void
+bench_ocb_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
+{
+  static const unsigned char nonce[12] = {
+    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xc9, 0xf8, 0xb7, 0xb6 };
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
+  const struct ocb_key *ocb_key = (void *)&hd->ctx[0];
+  const unsigned char *encrypt_ctx = &hd->ctx[sizeof(struct ocb_key)];
+
+  ocb_encrypt_message (ocb_key,
+		       encrypt_ctx, c->encrypt,
+		       sizeof(nonce), nonce,
+		       0, NULL,
+		       OCB_DIGEST_SIZE, buflen, buf, buf);
+}
+
+static void
+bench_ocb_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
+{
+  static const unsigned char nonce[12] = {
+    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xc9, 0xf8, 0xb7, 0xb6 };
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
+  const struct ocb_key *ocb_key = (void *)&hd->ctx[0];
+  const unsigned char *encrypt_ctx = &hd->ctx[sizeof(struct ocb_key)];
+  const unsigned char *decrypt_ctx = &encrypt_ctx[c->context_size];
+
+  ocb_decrypt_message (ocb_key,
+		       encrypt_ctx, c->encrypt,
+		       decrypt_ctx, c->decrypt,
+		       sizeof(nonce), nonce,
+		       0, NULL,
+		       OCB_DIGEST_SIZE,
+		       buflen + OCB_DIGEST_SIZE, buf, buf);
+}
+
+static void
+bench_ocb_authenticate_do_bench (struct bench_obj *obj, void *buf,
+				 size_t buflen)
+{
+  static const unsigned char nonce[12] = {
+    0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad, 0xc9, 0xf8, 0xb7, 0xb6 };
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  const struct nettle_cipher *c = hd->c;
+  const struct ocb_key *ocb_key = (void *)&hd->ctx[0];
+  const unsigned char *encrypt_ctx = &hd->ctx[sizeof(struct ocb_key)];
+
+  ocb_encrypt_message (ocb_key,
+		       encrypt_ctx, c->encrypt,
+		       sizeof(nonce), nonce,
+		       buflen, buf,
+		       OCB_DIGEST_SIZE, OCB_DIGEST_SIZE, buf, NULL);
+}
+
+
+static struct bench_ops ocb_encrypt_ops = {
+  &bench_ocb_crypt_init,
+  &bench_crypt_free,
+  &bench_ocb_encrypt_do_bench
+};
+
+static struct bench_ops ocb_decrypt_ops = {
+  &bench_ocb_crypt_init,
+  &bench_crypt_free,
+  &bench_ocb_decrypt_do_bench
+};
+
+static struct bench_ops ocb_authenticate_ops = {
+  &bench_ocb_crypt_init,
+  &bench_crypt_free,
+  &bench_ocb_authenticate_do_bench
+};
+
+
 static struct bench_cipher_mode cipher_modes[] = {
   {"ECB enc", &ecb_encrypt_ops, NULL},
   {"ECB dec", &ecb_decrypt_ops, NULL},
@@ -755,9 +956,9 @@ static struct bench_cipher_mode cipher_modes[] = {
   {"EAX enc", &gcm_encrypt_ops, "eax"},
   {"EAX dec", &gcm_decrypt_ops, "eax"},
   {"EAX auth", &gcm_authenticate_ops, "eax"},
-  {"OCB enc", &gcm_encrypt_ops, "ocb"},
-  {"OCB dec", &gcm_decrypt_ops, "ocb"},
-  {"OCB auth", &gcm_authenticate_ops, "ocb"},
+  {"OCB enc", &ocb_encrypt_ops },
+  {"OCB dec", &ocb_decrypt_ops },
+  {"OCB auth", &ocb_authenticate_ops },
   {"POLY1305 enc", &poly1305_encrypt_ops, "poly1305"},
   {"POLY1305 dec", &poly1305_decrypt_ops, "poly1305"},
   {"POLY1305 auth", &poly1305_authenticate_ops, "poly1305"},
@@ -777,6 +978,15 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
   mode.algo = algo;
 
   blklen = c->block_size ? c->block_size : 1;
+
+  /* OCB? Only test 128-bit block ciphers. */
+  if (strncmp(mode.name, "OCB", 3) == 0 && blklen != 16)
+    return;
+
+  /* OCB? Check if supported by loaded library. */
+  if (strncmp(mode.name, "OCB", 3) == 0
+      && !(ocb_set_key && ocb_encrypt_message && ocb_decrypt_message))
+    return;
 
   /* XTS? Only test 128-bit block ciphers. */
   if (strncmp(mode.name, "XTS", 3) == 0 && blklen != 16)
@@ -1110,6 +1320,7 @@ main (int argc, char **argv)
          nettle_version_minor());
 
   compat_prepare_cbc_aes_encrypt();
+  compat_prepare_ocb();
 
   list_size = 1;
   list_size += count_pointers((const void * const *)nettle_ciphers_extra);

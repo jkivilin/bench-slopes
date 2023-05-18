@@ -1,5 +1,5 @@
 /* slope.h - slope benchmarking framework
- * Copyright © 2013, 2016-2020 Jussi Kivilinna <jussi.kivilinna@iki.fi>
+ * Copyright © 2013, 2016-2023 Jussi Kivilinna <jussi.kivilinna@iki.fi>
  *
  * This file is part of Bench-slopes.
  *
@@ -95,6 +95,7 @@ struct bench_obj
   unsigned int min_bufsize;
   unsigned int max_bufsize;
   unsigned int step_size;
+  unsigned int extra_alloc_size;
   unsigned int num_measurement_repetitions;
 
   void *priv;

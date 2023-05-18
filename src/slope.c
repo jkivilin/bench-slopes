@@ -1,5 +1,5 @@
 /* slope.c - slope benchmarking framework
- * Copyright © 2013, 2016-2020 Jussi Kivilinna <jussi.kivilinna@iki.fi>
+ * Copyright © 2013, 2016-2023 Jussi Kivilinna <jussi.kivilinna@iki.fi>
  *
  * This file is part of Bench-slopes.
  *
@@ -524,7 +524,8 @@ slope_benchmark (struct bench_obj *obj, int is_auto_ghz)
       get_start_bufsize(obj, is_auto_ghz) > get_max_bufsize(obj, is_auto_ghz))
     goto err_free;
 
-  real_buffer = malloc (get_max_bufsize(obj, is_auto_ghz) + 128 + settings.unaligned_mode);
+  real_buffer = malloc (get_max_bufsize(obj, is_auto_ghz) + 128
+			+ settings.unaligned_mode + obj->extra_alloc_size);
   if (!real_buffer)
     goto err_free;
   /* Get aligned buffer */
