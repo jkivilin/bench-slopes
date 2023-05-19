@@ -59,6 +59,7 @@ int main(void)
 #include <nettle/arcfour.h>
 #include <nettle/salsa20.h>
 #include <nettle/chacha.h>
+#include <nettle/chacha-poly1305.h>
 #if HEADER_NETTLE_VERSION >= 309
 #include <nettle/ocb.h>
 #include <nettle/siv_gcm.h>
@@ -190,11 +191,7 @@ compat_prepare_siv_gcm(void)
 
 struct cipher_ctx_s
 {
-  union
-  {
-    const struct nettle_cipher *c;
-    const struct nettle_aead *aead;
-  };
+  const struct nettle_cipher *c;
   void *iv;
   uint64_t align64;
   unsigned char ctx[];
@@ -204,7 +201,6 @@ struct bench_cipher_mode
 {
   const char *name;
   struct bench_ops *ops;
-  const char *aead_name;
 
   int algo;
   struct cipher_ctx_s *hd;
@@ -328,17 +324,18 @@ static const char *cipher_algo_name(int algo)
 }
 
 static struct cipher_ctx_s *cipher_open(const struct nettle_cipher *c,
-					unsigned int num_ctx)
+					unsigned int context_size,
+					unsigned int iv_size)
 {
   struct cipher_ctx_s *ctx;
 
-  ctx = calloc(1, sizeof(*ctx) + c->context_size * num_ctx);
+  ctx = calloc(1, sizeof(*ctx) + context_size);
   if (!ctx)
     return NULL;
 
   ctx->c = c;
 
-  ctx->iv = calloc(1, c->block_size + 1);
+  ctx->iv = calloc(1, iv_size + !iv_size);
   if (!ctx->iv)
     {
       free(ctx);
@@ -361,7 +358,8 @@ bench_crypt_init (struct bench_obj *obj, int encrypt)
   obj->max_bufsize = BUF_END_SIZE;
   obj->step_size = BUF_STEP_SIZE;
 
-  hd = cipher_open (c, is_xts ? 2 : 1);
+  hd = cipher_open (c, c->context_size + (is_xts * c->context_size),
+		    c->block_size + 1);
   if (!hd)
     {
       fprintf (stderr, PGM ": error opening cipher `%s'\n",
@@ -588,53 +586,11 @@ static struct bench_ops xts_decrypt_ops = {
 };
 
 
-static const struct nettle_aead *cipher_algo_aead(const struct nettle_cipher *c,
-						  const char *aead_name)
-{
-  const struct nettle_aead * const *aead;
-  char buf1[32];
-  char buf2[32];
-
-  snprintf(buf1, sizeof(buf1), "%s_%s", aead_name, c->name);
-  snprintf(buf2, sizeof(buf2), "%s_%s", c->name, aead_name);
-
-  for (aead = nettle_aeads; *aead; aead++)
-    {
-      if (strcmp(buf1, (*aead)->name) == 0)
-	return *aead;
-      if (strcmp(buf2, (*aead)->name) == 0)
-	return *aead;
-    }
-
-  return NULL;
-}
-
-static struct cipher_ctx_s *aead_open(const struct nettle_aead *aead)
-{
-  struct cipher_ctx_s *ctx;
-
-  ctx = calloc(1, sizeof(*ctx) + aead->context_size);
-  if (!ctx)
-    return NULL;
-
-  ctx->aead = aead;
-
-  ctx->iv = calloc(1, 1);
-  if (!ctx->iv)
-    {
-      free(ctx);
-      return NULL;
-    }
-
-  return ctx;
-}
-
 static int
-bench_aead_crypt_init (struct bench_obj *obj, int encrypt)
+bench_chacha_poly1305_crypt_init (struct bench_obj *obj)
 {
   struct bench_cipher_mode *mode = obj->priv;
   const struct nettle_cipher *c = cipher_algo(mode->algo);
-  const struct nettle_aead *aead = cipher_algo_aead(c, mode->aead_name);
   struct cipher_ctx_s *hd;
   int keylen;
 
@@ -642,7 +598,7 @@ bench_aead_crypt_init (struct bench_obj *obj, int encrypt)
   obj->max_bufsize = BUF_END_SIZE;
   obj->step_size = BUF_STEP_SIZE;
 
-  hd = aead_open (aead);
+  hd = cipher_open (c, sizeof(struct chacha_poly1305_ctx), 0);
   if (!hd)
     {
       fprintf (stderr, PGM ": error opening AEAD cipher `%s'\n",
@@ -653,16 +609,14 @@ bench_aead_crypt_init (struct bench_obj *obj, int encrypt)
   keylen = c->key_size;
   if (keylen)
     {
+      struct chacha_poly1305_ctx *ctx = (void *)hd->ctx;
       unsigned char key[keylen];
       int i;
 
       for (i = 0; i < keylen; i++)
 	key[i] = 0x33 ^ (11 - i);
 
-      if (encrypt)
-	c->set_encrypt_key(&hd->ctx, key);
-      else
-	c->set_decrypt_key(&hd->ctx, key);
+      chacha_poly1305_set_key(ctx, key);
     }
   else
     {
@@ -676,132 +630,75 @@ bench_aead_crypt_init (struct bench_obj *obj, int encrypt)
   return 0;
 }
 
-static int
-bench_aead_encrypt_init (struct bench_obj *obj)
-{
-  return bench_aead_crypt_init(obj, 1);
-}
-
-static int
-bench_aead_decrypt_init (struct bench_obj *obj)
-{
-  return bench_aead_crypt_init(obj, 0);
-}
-
 static void
-bench_aead_encrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen,
-			     const unsigned char *nonce, size_t noncelen)
-{
-  struct bench_cipher_mode *mode = obj->priv;
-  struct cipher_ctx_s *hd = mode->hd;
-  const struct nettle_aead *aead = hd->aead;
-  unsigned char tag[aead->digest_size];
-
-  aead->set_nonce (&hd->ctx, nonce);
-  aead->encrypt (&hd->ctx, buflen, buf, buf);
-  aead->digest (&hd->ctx, sizeof(tag), tag);
-}
-
-static void
-bench_aead_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen,
-			     const unsigned char *nonce, size_t noncelen)
-{
-  struct bench_cipher_mode *mode = obj->priv;
-  struct cipher_ctx_s *hd = mode->hd;
-  const struct nettle_aead *aead = hd->aead;
-  unsigned char tag[aead->digest_size];
-
-  aead->set_nonce (&hd->ctx, nonce);
-  aead->decrypt (&hd->ctx, buflen, buf, buf);
-  aead->digest (&hd->ctx, sizeof(tag), tag);
-}
-
-static void
-bench_aead_authenticate_do_bench (struct bench_obj *obj, void *buf,
-				  size_t buflen, const unsigned char *nonce,
-				  size_t noncelen)
-{
-  struct bench_cipher_mode *mode = obj->priv;
-  struct cipher_ctx_s *hd = mode->hd;
-  const struct nettle_aead *aead = hd->aead;
-  unsigned char tag[aead->digest_size];
-  unsigned char data = 0xff;
-
-  aead->set_nonce (&hd->ctx, nonce);
-  aead->update (&hd->ctx, buflen, buf);
-  aead->encrypt (&hd->ctx, sizeof (data), &data, &data);
-  aead->digest (&hd->ctx, sizeof(tag), tag);
-}
-
-static void
-bench_poly1305_encrypt_do_bench (struct bench_obj *obj, void *buf,
-				 size_t buflen)
+bench_chacha_poly1305_encrypt_do_bench (struct bench_obj *obj, void *buf,
+					size_t buflen)
 {
   static const unsigned char nonce[16] = {
     0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad,
     0xc9, 0xf8, 0xb7, 0xb6, 0xf5, 0xc4, 0xd3, 0xa2 };
-  bench_aead_encrypt_do_bench (obj, buf, buflen, nonce, sizeof(nonce));
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  struct chacha_poly1305_ctx *ctx = (void *)hd->ctx;
+  unsigned char tag[CHACHA_POLY1305_DIGEST_SIZE];
+
+  chacha_poly1305_set_nonce (ctx, nonce);
+  chacha_poly1305_encrypt (ctx, buflen, buf, buf);
+  chacha_poly1305_digest (ctx, sizeof(tag), tag);
 }
 
 static void
-bench_poly1305_decrypt_do_bench (struct bench_obj *obj, void *buf,
-				 size_t buflen)
+bench_chacha_poly1305_decrypt_do_bench (struct bench_obj *obj, void *buf,
+					size_t buflen)
 {
   static const unsigned char nonce[16] = {
     0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad,
     0xc9, 0xf8, 0xb7, 0xb6, 0xf5, 0xc4, 0xd3, 0xa2 };
-  bench_aead_decrypt_do_bench (obj, buf, buflen, nonce, sizeof(nonce));
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  struct chacha_poly1305_ctx *ctx = (void *)hd->ctx;
+  unsigned char tag[CHACHA_POLY1305_DIGEST_SIZE];
+
+  chacha_poly1305_set_nonce (ctx, nonce);
+  chacha_poly1305_decrypt (ctx, buflen, buf, buf);
+  chacha_poly1305_digest (ctx, sizeof(tag), tag);
 }
 
 static void
-bench_poly1305_authenticate_do_bench (struct bench_obj *obj, void *buf,
-				      size_t buflen)
+bench_chacha_poly1305_authenticate_do_bench (struct bench_obj *obj, void *buf,
+					     size_t buflen)
 {
   static const unsigned char nonce[16] = {
     0xca, 0xfe, 0xba, 0xbe, 0xfa, 0xce, 0xdb, 0xad,
     0xc9, 0xf8, 0xb7, 0xb6, 0xf5, 0xc4, 0xd3, 0xa2 };
-  bench_aead_authenticate_do_bench (obj, buf, buflen, nonce, sizeof(nonce));
+  struct bench_cipher_mode *mode = obj->priv;
+  struct cipher_ctx_s *hd = mode->hd;
+  struct chacha_poly1305_ctx *ctx = (void *)hd->ctx;
+  unsigned char tag[CHACHA_POLY1305_DIGEST_SIZE];
+
+  chacha_poly1305_set_nonce (ctx, nonce);
+  chacha_poly1305_update (ctx, buflen, buf);
+  chacha_poly1305_digest (ctx, sizeof(tag), tag);
 }
 
-static struct bench_ops poly1305_encrypt_ops = {
-  &bench_aead_encrypt_init,
+static struct bench_ops chacha_poly1305_encrypt_ops = {
+  &bench_chacha_poly1305_crypt_init,
   &bench_crypt_free,
-  &bench_poly1305_encrypt_do_bench
+  &bench_chacha_poly1305_encrypt_do_bench
 };
 
-static struct bench_ops poly1305_decrypt_ops = {
-  &bench_aead_decrypt_init,
+static struct bench_ops chacha_poly1305_decrypt_ops = {
+  &bench_chacha_poly1305_crypt_init,
   &bench_crypt_free,
-  &bench_poly1305_decrypt_do_bench
+  &bench_chacha_poly1305_decrypt_do_bench
 };
 
-static struct bench_ops poly1305_authenticate_ops = {
-  &bench_aead_encrypt_init,
+static struct bench_ops chacha_poly1305_authenticate_ops = {
+  &bench_chacha_poly1305_crypt_init,
   &bench_crypt_free,
-  &bench_poly1305_authenticate_do_bench
+  &bench_chacha_poly1305_authenticate_do_bench
 };
 
-
-static struct cipher_ctx_s *
-gcm_eax_open(const struct nettle_cipher *c, size_t key_ctx_size)
-{
-  struct cipher_ctx_s *ctx;
-
-  ctx = calloc(1, sizeof(*ctx) + key_ctx_size + c->context_size);
-  if (!ctx)
-    return NULL;
-
-  ctx->c = c;
-
-  ctx->iv = calloc(1, 1);
-  if (!ctx->iv)
-    {
-      free(ctx);
-      return NULL;
-    }
-
-  return ctx;
-}
 
 static int
 bench_gcm_eax_crypt_init (struct bench_obj *obj)
@@ -816,8 +713,8 @@ bench_gcm_eax_crypt_init (struct bench_obj *obj)
   obj->max_bufsize = BUF_END_SIZE;
   obj->step_size = BUF_STEP_SIZE;
 
-  hd = gcm_eax_open (c, is_eax ? sizeof(struct eax_key)
-			       : sizeof(struct gcm_key));
+  hd = cipher_open (c, c->context_size + (is_eax ? sizeof(struct eax_key)
+						 : sizeof(struct gcm_key)), 0);
   if (!hd)
     {
       fprintf (stderr, PGM ": error opening cipher `%s'\n",
@@ -1016,27 +913,6 @@ static struct bench_ops eax_authenticate_ops = {
 };
 
 
-static struct cipher_ctx_s *
-ocb_open(const struct nettle_cipher *c)
-{
-  struct cipher_ctx_s *ctx;
-
-  ctx = calloc(1, sizeof(*ctx) + sizeof(struct ocb_key) + c->context_size * 2);
-  if (!ctx)
-    return NULL;
-
-  ctx->c = c;
-
-  ctx->iv = calloc(1, 1);
-  if (!ctx->iv)
-    {
-      free(ctx);
-      return NULL;
-    }
-
-  return ctx;
-}
-
 static int
 bench_ocb_crypt_init (struct bench_obj *obj)
 {
@@ -1050,7 +926,7 @@ bench_ocb_crypt_init (struct bench_obj *obj)
   obj->step_size = BUF_STEP_SIZE;
   obj->extra_alloc_size = OCB_DIGEST_SIZE;
 
-  hd = ocb_open (c);
+  hd = cipher_open (c, sizeof(struct ocb_key) + c->context_size * 2, 0);
   if (!hd)
     {
       fprintf (stderr, PGM ": error opening cipher `%s'\n",
@@ -1239,31 +1115,31 @@ static struct bench_ops siv_gcm_authenticate_ops = {
 
 
 static struct bench_cipher_mode cipher_modes[] = {
-  {"ECB enc", &ecb_encrypt_ops, NULL},
-  {"ECB dec", &ecb_decrypt_ops, NULL},
-  {"CBC enc", &cbc_encrypt_ops, NULL},
-  {"CBC dec", &cbc_decrypt_ops, NULL},
-  {"CFB enc", &cfb_encrypt_ops, NULL},
-  {"CFB dec", &cfb_decrypt_ops, NULL},
-  {"CTR enc", &ctr_crypt_ops, NULL},
-  {"CTR dec", &ctr_crypt_ops, NULL},
-  {"XTS enc", &xts_encrypt_ops, NULL},
-  {"XTS dec", &xts_decrypt_ops, NULL},
-  {"GCM enc", &gcm_encrypt_ops, NULL},
-  {"GCM dec", &gcm_decrypt_ops, NULL},
-  {"GCM auth", &gcm_authenticate_ops, NULL},
-  {"EAX enc", &eax_encrypt_ops, NULL},
-  {"EAX dec", &eax_decrypt_ops, NULL},
-  {"EAX auth", &eax_authenticate_ops, NULL},
+  {"ECB enc", &ecb_encrypt_ops},
+  {"ECB dec", &ecb_decrypt_ops},
+  {"CBC enc", &cbc_encrypt_ops},
+  {"CBC dec", &cbc_decrypt_ops},
+  {"CFB enc", &cfb_encrypt_ops},
+  {"CFB dec", &cfb_decrypt_ops},
+  {"CTR enc", &ctr_crypt_ops},
+  {"CTR dec", &ctr_crypt_ops},
+  {"XTS enc", &xts_encrypt_ops},
+  {"XTS dec", &xts_decrypt_ops},
+  {"GCM enc", &gcm_encrypt_ops},
+  {"GCM dec", &gcm_decrypt_ops},
+  {"GCM auth", &gcm_authenticate_ops},
+  {"EAX enc", &eax_encrypt_ops},
+  {"EAX dec", &eax_decrypt_ops},
+  {"EAX auth", &eax_authenticate_ops},
   {"OCB enc", &ocb_encrypt_ops },
   {"OCB dec", &ocb_decrypt_ops },
   {"OCB auth", &ocb_authenticate_ops },
   {"GCM-SIV enc", &siv_gcm_encrypt_ops },
   {"GCM-SIV dec", &siv_gcm_decrypt_ops },
   {"GCM-SIV auth", &siv_gcm_authenticate_ops },
-  {"POLY1305 enc", &poly1305_encrypt_ops, "poly1305"},
-  {"POLY1305 dec", &poly1305_decrypt_ops, "poly1305"},
-  {"POLY1305 auth", &poly1305_authenticate_ops, "poly1305"},
+  {"POLY1305 enc", &chacha_poly1305_encrypt_ops},
+  {"POLY1305 dec", &chacha_poly1305_decrypt_ops},
+  {"POLY1305 auth", &chacha_poly1305_authenticate_ops},
   {0},
 };
 
@@ -1320,8 +1196,8 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
       mode.name = mode.ops == &ecb_encrypt_ops ? "STREAM enc" : "STREAM dec";
     }
 
-  /* AEAD? check for corresponding nettle_aead. */
-  if (mode.aead_name && cipher_algo_aead(c, mode.aead_name) == NULL)
+  /* POLY1305? Only allowed for chacha cipher. */
+  if (strncmp(mode.name, "POLY1305", 8) == 0 && strcmp(c->name, "chacha") != 0)
     return;
 
   bench_print_mode (14, mode.name);
