@@ -56,11 +56,6 @@ static struct
 } bench_raw;
 
 
-void *rpl_malloc (size_t n)
-{
-  return malloc (n ? n : 1);
-}
-
 
 /**************************************************** High-resolution timers. */
 
@@ -524,8 +519,8 @@ slope_benchmark (struct bench_obj *obj, int is_auto_ghz)
       get_start_bufsize(obj, is_auto_ghz) > get_max_bufsize(obj, is_auto_ghz))
     goto err_free;
 
-  real_buffer = malloc (get_max_bufsize(obj, is_auto_ghz) + 128
-			+ settings.unaligned_mode + obj->extra_alloc_size);
+  real_buffer = calloc (1, get_max_bufsize(obj, is_auto_ghz) + 128
+			     + settings.unaligned_mode + obj->extra_alloc_size);
   if (!real_buffer)
     goto err_free;
   /* Get aligned buffer */

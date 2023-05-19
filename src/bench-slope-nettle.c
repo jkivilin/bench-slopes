@@ -1001,7 +1001,7 @@ bench_ocb_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 		       sizeof(nonce), nonce,
 		       0, NULL,
 		       OCB_DIGEST_SIZE,
-		       buflen + OCB_DIGEST_SIZE, buf, buf);
+		       buflen, buf, buf);
 }
 
 static void
@@ -1075,7 +1075,7 @@ bench_siv_gcm_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
   uint64_t ctr_ctx[(c->context_size + 7) / 8];
 
   siv_gcm_decrypt_message (c, hd->ctx, ctr_ctx, sizeof(nonce), nonce, 0, NULL,
-			   buflen + SIV_GCM_DIGEST_SIZE, buf, buf);
+			   buflen, buf, buf);
 }
 
 static void
