@@ -62,7 +62,7 @@ int main(void)
 #include <nettle/chacha-poly1305.h>
 #if HEADER_NETTLE_VERSION >= 309
 #include <nettle/ocb.h>
-#include <nettle/siv_gcm.h>
+#include <nettle/siv-gcm.h>
 #endif
 
 #ifndef STR
