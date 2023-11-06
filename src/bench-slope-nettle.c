@@ -1163,7 +1163,9 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
 
   /* OCB? Check if supported by loaded library. */
   if (strncmp(mode.name, "OCB", 3) == 0
-      && !(ocb_set_key && ocb_encrypt_message && ocb_decrypt_message))
+      && ((uintptr_t)ocb_set_key == (uintptr_t)NULL
+          || (uintptr_t)ocb_encrypt_message == (uintptr_t)NULL
+          || (uintptr_t)ocb_decrypt_message == (uintptr_t)NULL))
     return;
 
   /* GCM-SIV? Only test 128-bit block ciphers. */
@@ -1172,7 +1174,8 @@ cipher_bench_one (int algo, struct bench_cipher_mode *pmode)
 
   /* GCM-SIV? Check if supported by loaded library. */
   if (strncmp(mode.name, "GCM-SIV", 7) == 0
-      && !(siv_gcm_encrypt_message && siv_gcm_decrypt_message))
+      && ((uintptr_t)siv_gcm_encrypt_message == (uintptr_t)NULL
+          || (uintptr_t)siv_gcm_decrypt_message == (uintptr_t)NULL))
     return;
 
   /* GCM? Only test 128-bit block ciphers. */
