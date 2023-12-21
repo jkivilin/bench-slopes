@@ -7,6 +7,14 @@ AC_CONFIG_SRCDIR([src/slope.c])
 AM_INIT_AUTOMAKE
 AC_CONFIG_HEADERS([config.h])
 
+if test "$CFLAGS" = "" ; then
+    CFLAGS="-O2"
+fi
+
+if test "$CXXFLAGS" = "" ; then
+    CXXFLAGS="-O2"
+fi
+
 CFLAGS="$CFLAGS -Wall"
 CXXFLAGS="$CXXFLAGS -Wall"
 
