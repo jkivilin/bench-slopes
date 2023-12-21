@@ -162,7 +162,9 @@ bench_crypt_cipher_mode_do_bench (struct bench_obj *obj, void *buf,
 {
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
-  uint8_t iv[mode->cm->default_nonce_length()] = {0,};
+  uint8_t iv[mode->cm->default_nonce_length()];
+
+  memset(iv, 0, sizeof(iv));
 
   mode->cm->start(iv, sizeof(iv));
   mode->cm->process(reinterpret_cast<uint8_t *>(buf), buflen);
@@ -239,9 +241,11 @@ bench_encrypt_aead_mode_do_bench (struct bench_obj *obj, void *vbuf,
 {
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
-  uint8_t iv[mode->am->default_nonce_length()] = {0,};
+  uint8_t iv[mode->am->default_nonce_length()];
   uint8_t *buf = reinterpret_cast<uint8_t *>(vbuf);
   size_t granularity = mode->am->update_granularity();
+
+  memset(iv, 0, sizeof(iv));
 
   mode->am->start(iv, sizeof(iv));
 
@@ -264,10 +268,13 @@ bench_decrypt_aead_mode_do_bench (struct bench_obj *obj, void *vbuf,
 {
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
-  uint8_t iv[mode->am->default_nonce_length()] = {0,};
-  uint8_t mac[mode->am->tag_size()] = {0,};
+  uint8_t iv[mode->am->default_nonce_length()];
+  uint8_t mac[mode->am->tag_size()];
   uint8_t *buf = reinterpret_cast<uint8_t *>(vbuf);
   size_t granularity = mode->am->update_granularity();
+
+  memset(iv, 0, sizeof(iv));
+  memset(mac, 0, sizeof(mac));
 
   mode->am->start(iv, sizeof(iv));
 
@@ -299,9 +306,12 @@ bench_authenticate_aead_mode_do_bench (struct bench_obj *obj, void *vbuf,
 {
   struct bench_cipher_mode *mode =
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
-  uint8_t iv[mode->am->default_nonce_length()] = {0,};
-  uint8_t mac[mode->am->tag_size()] = {0,};
+  uint8_t iv[mode->am->default_nonce_length()];
+  uint8_t mac[mode->am->tag_size()];
   uint8_t *buf = reinterpret_cast<uint8_t *>(vbuf);
+
+  memset(iv, 0, sizeof(iv));
+  memset(mac, 0, sizeof(mac));
 
   mode->am->reset();
   mode->am->set_associated_data(buf, buflen);
@@ -396,7 +406,8 @@ bench_crypt_stream_cipher_do_bench (struct bench_obj *obj, void *buf,
 
   if (mode->ivlen > 0)
   {
-    uint8_t iv[mode->ivlen] = {0,};
+    uint8_t iv[mode->ivlen];
+    memset(iv, 0, sizeof(iv));
     mode->sc->set_iv(iv, sizeof(iv));
   }
   else
