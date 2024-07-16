@@ -12,7 +12,7 @@ if test "$CFLAGS" = "" ; then
 fi
 
 if test "$CXXFLAGS" = "" ; then
-    CXXFLAGS="-O2"
+    CXXFLAGS="-O2 -std=c++20"
 fi
 
 CFLAGS="$CFLAGS -Wall"
@@ -76,7 +76,7 @@ AM_PATH_LIBGCRYPT("1.6.0",[AC_DEFINE(HAVE_LIBGCRYPT_1_6,1,"Have libgcrypt >= 1.6
 AM_PATH_GPG_ERROR("1.0")
 
 # Check for botan
-PKG_CHECK_MODULES(botan, [botan-2], [AC_DEFINE(HAVE_BOTAN2,1,"Have botan-2")])
+PKG_CHECK_MODULES(botan, [botan-3], [AC_DEFINE(HAVE_BOTAN3,1,"Have botan-3")])
 BOTAN_LIBS=$botan_LIBS
 BOTAN_CFLAGS=$botan_CFLAGS
 

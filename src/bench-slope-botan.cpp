@@ -22,7 +22,7 @@
 #endif
 #include <stdio.h>
 
-#if defined(HAVE_CONFIG_H) && !defined(HAVE_BOTAN2)
+#if defined(HAVE_CONFIG_H) && !defined(HAVE_BOTAN3)
 
 int main(void)
 {
@@ -30,7 +30,7 @@ int main(void)
   return 0;
 }
 
-#else /* HAVE_BOTAN2 */
+#else /* HAVE_BOTAN3 */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -81,7 +81,9 @@ static const char * const botan_ciphers[] =
   "AES-128",
   "AES-192",
   "AES-256",
-  "ARIA",
+  "ARIA-128",
+  "ARIA-192",
+  "ARIA-256",
   "Blowfish",
   "CAST-128",
   "CAST-256",
@@ -90,14 +92,11 @@ static const char * const botan_ciphers[] =
   "Camellia-256",
   "3DES",
   "GOST-28147-89",
-  "Kasumi",
-  "MISTY1",
   "Noekeon",
   "SEED",
   "SM4",
   "Serpent",
   "Twofish",
-  "XTEA",
   "ChaCha",
   "Salsa20",
   "RC4",
@@ -112,7 +111,7 @@ bench_crypt_cipher_mode_init (struct bench_obj *obj, int encrypt)
   int keylen;
 
   mode->cm = Botan::Cipher_Mode::create(mode->algo,
-		encrypt ? Botan::ENCRYPTION : Botan::DECRYPTION);
+		encrypt ? Botan::Cipher_Dir::Encryption : Botan::Cipher_Dir::Decryption);
   if (!mode->cm)
     return -1;
 
@@ -191,7 +190,7 @@ bench_crypt_aead_mode_init (struct bench_obj *obj, int encrypt)
   int keylen;
 
   mode->am = Botan::AEAD_Mode::create(mode->algo,
-		encrypt ? Botan::ENCRYPTION : Botan::DECRYPTION);
+		encrypt ? Botan::Cipher_Dir::Encryption : Botan::Cipher_Dir::Decryption);
   if (!mode->am)
     return -1;
 
@@ -609,7 +608,6 @@ static const char *botan_hashes[] =
   "Skein-512",
   "Streebog-256",
   "Streebog-512",
-  "Tiger",
   "Whirlpool",
   "Adler32",
   "CRC24",
@@ -755,4 +753,4 @@ main (int argc, char **argv)
   return slope_main_template(argc, argv, groups, PGM, LIBNAME);
 }
 
-#endif /* HAVE_BOTAN2 */
+#endif /* HAVE_BOTAN3 */
