@@ -623,13 +623,13 @@ static struct bench_ops ocb_decrypt_ops = {
   &bench_ocb_decrypt_do_bench
 };
 
-
-#ifdef HAVE_LIBGCRYPT_1_10
 static struct bench_ops ocb_authenticate_ops = {
   &bench_encrypt_init,
   &bench_encrypt_free,
   &bench_ocb_authenticate_do_bench
 };
+
+#ifdef HAVE_LIBGCRYPT_1_10
 static void
 bench_siv_encrypt_do_bench (struct bench_obj *obj, void *buf,
 			    size_t buflen)
