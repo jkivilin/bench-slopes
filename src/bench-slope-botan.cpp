@@ -22,7 +22,7 @@
 #endif
 #include <stdio.h>
 
-#if defined(HAVE_CONFIG_H) && !defined(HAVE_BOTAN3)
+#if defined(HAVE_CONFIG_H) && !defined(HAVE_BOTAN3) && !defined(HAVE_BOTAN2)
 
 int main(void)
 {
@@ -30,7 +30,7 @@ int main(void)
   return 0;
 }
 
-#else /* HAVE_BOTAN3 */
+#else /* HAVE_BOTAN3 || HAVE_BOTAN2 */
 
 #include <stdlib.h>
 #include <stdarg.h>
@@ -57,6 +57,19 @@ extern "C" {
 
 #define LIBNAME "botan"
 #define PGM "bench-slope-" LIBNAME
+
+
+static Botan::Cipher_Dir
+botan_cipher_dir (bool encrypt)
+{
+#ifdef HAVE_BOTAN3
+  return encrypt ? Botan::Cipher_Dir::Encryption
+		 : Botan::Cipher_Dir::Decryption;
+#else
+  return encrypt ? Botan::ENCRYPTION
+		 : Botan::DECRYPTION;
+#endif
+}
 
 
 /********************************************************* Cipher benchmarks. */
@@ -110,8 +123,7 @@ bench_crypt_cipher_mode_init (struct bench_obj *obj, int encrypt)
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
   int keylen;
 
-  mode->cm = Botan::Cipher_Mode::create(mode->algo,
-		encrypt ? Botan::Cipher_Dir::Encryption : Botan::Cipher_Dir::Decryption);
+  mode->cm = Botan::Cipher_Mode::create(mode->algo, botan_cipher_dir(encrypt));
   if (!mode->cm)
     return -1;
 
@@ -189,8 +201,7 @@ bench_crypt_aead_mode_init (struct bench_obj *obj, int encrypt)
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
   int keylen;
 
-  mode->am = Botan::AEAD_Mode::create(mode->algo,
-		encrypt ? Botan::Cipher_Dir::Encryption : Botan::Cipher_Dir::Decryption);
+  mode->am = Botan::AEAD_Mode::create(mode->algo, botan_cipher_dir(encrypt));
   if (!mode->am)
     return -1;
 

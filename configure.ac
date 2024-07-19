@@ -76,9 +76,10 @@ AM_PATH_LIBGCRYPT("1.6.0",[AC_DEFINE(HAVE_LIBGCRYPT_1_6,1,"Have libgcrypt >= 1.6
 AM_PATH_GPG_ERROR("1.0")
 
 # Check for botan
-PKG_CHECK_MODULES(botan, [botan-3], [AC_DEFINE(HAVE_BOTAN3,1,"Have botan-3")])
-BOTAN_LIBS=$botan_LIBS
-BOTAN_CFLAGS=$botan_CFLAGS
+PKG_CHECK_MODULES(botan3, [botan-3], [AC_DEFINE(HAVE_BOTAN3,1,"Have botan-3")],
+	[PKG_CHECK_MODULES(botan2, [botan-2], [AC_DEFINE(HAVE_BOTAN2,1,"Have botan-2")])])
+BOTAN_LIBS="$botan3_LIBS $botan2_LIBS"
+BOTAN_CFLAGS="$botan3_CFLAGS $botan2_CFLAGS"
 
 # Check for Crypto++
 PKG_CHECK_MODULES(cryptopp, [libcrypto++], [AC_DEFINE(HAVE_CRYPTOPP,1,"Have Crypto++")])
