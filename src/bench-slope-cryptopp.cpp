@@ -382,7 +382,7 @@ bench_crypt_aead_mode_do_bench (struct bench_obj *obj, void *buf,
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
   uint8_t tag[32];
 
-  mode->am->Resynchronize(default_iv, mode->am->MinIVLength());
+  mode->am->Resynchronize(default_iv, mode->am->DefaultIVLength());
   mode->am->ProcessString(reinterpret_cast<uint8_t *>(buf), buflen);
   mode->am->TruncatedFinal(tag, mode->am->DigestSize());
   mode->am->Restart();
@@ -396,7 +396,7 @@ bench_authenticate_aead_mode_do_bench (struct bench_obj *obj, void *buf,
       reinterpret_cast<struct bench_cipher_mode *>(obj->priv);
   uint8_t tag[32];
 
-  mode->am->Resynchronize(default_iv, mode->am->MinIVLength());
+  mode->am->Resynchronize(default_iv, mode->am->DefaultIVLength());
   mode->am->Update(reinterpret_cast<uint8_t *>(buf), buflen);
   mode->am->TruncatedFinal(tag, mode->am->DigestSize());
   mode->am->Restart();
