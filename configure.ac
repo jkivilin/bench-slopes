@@ -85,6 +85,9 @@ AC_SEARCH_LIBS([nettle_aeads],[nettle],[AC_DEFINE(HAVE_LIBNETTLE,1,"Have libnett
 NETTLE_LIBS=$LIBS
 LIBS=$saved_LIBS
 
+# Without pkg-config, skip the libraries detected with it instead of failing.
+PKG_PROG_PKG_CONFIG([], [PKG_CONFIG=false])
+
 # Check for OpenSSL
 PKG_CHECK_MODULES([OPENSSL],[openssl >= 0.98],
                   [AC_DEFINE(HAVE_OPENSSL,1,"Have OpenSSL >= 0.98")],
