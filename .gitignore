@@ -22,6 +22,8 @@ src/bench-slope-gcrypt
 src/bench-slope-nettle
 src/bench-slope-openssl
 src/bench-slope-botan
+src/bench-slope-cryptopp
+src/plot_raw_results.sh
 src/*.o
 stamp-h1
 *~
