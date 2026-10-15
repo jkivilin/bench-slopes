@@ -122,7 +122,10 @@ bench_crypt_init (struct bench_obj *obj, int encrypt)
 	ret = EVP_DecryptInit_ex(mode->hd, mode->algo, NULL, key, NULL);
 
       if (ret)
-	mode->init = 1;
+	{
+	  mode->init = 1;
+	  EVP_CIPHER_CTX_set_padding(mode->hd, 0);
+	}
     }
 
   if (ret != 1)
@@ -261,13 +264,10 @@ cipher_check_algo (struct bench_cipher_mode *mode)
 	key[i] = 0x33 ^ (11 - i);
 
       ret = EVP_EncryptInit_ex(mode->hd, mode->algo, NULL, key, NULL);
-      if (ret == 1)
-        {
-          EVP_CIPHER_CTX_cleanup(mode->hd);
-          EVP_CIPHER_CTX_free(mode->hd);
-          mode->hd = NULL;
-        }
     }
+
+  EVP_CIPHER_CTX_free(mode->hd);
+  mode->hd = NULL;
 
   return (ret == 1);
 }
