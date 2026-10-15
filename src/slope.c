@@ -826,7 +826,7 @@ bench_print_result_raw (void)
 
   fp = fopen(filename, "wt");
   if (!fp)
-    return;
+    goto out;
 
   for (i = 0; i < bench_raw.npoints; i++)
     {
@@ -839,6 +839,10 @@ bench_print_result_raw (void)
     }
 
   fclose(fp);
+
+out:
+  free (bench_raw.data);
+  bench_raw.data = NULL;
 }
 
 void
