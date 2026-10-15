@@ -7,7 +7,7 @@ function get_libname() {
   echo "$1" | sed "s/^\(.*\)_results_for_$2_.*$/\1/g"
 }
 function get_dataname() {
-  echo "$1" | sed "s/^.*_results_for_$2_\(.*\)_on_.*\.csv$/\1/g"
+  echo "$1" | sed -e "s/^.*_results_for_$2_\(.*\)_on_.*\.csv$/\1/g" -e "s/_$//"
 }
 
 function output_gnuplot_script() {
@@ -51,7 +51,7 @@ function output_gnuplot_script() {
     fi
     first=0
 
-    echo -n "\"$file\" using 1:((2*1000*1000*1000) / (\$3 * (1024*1024))) title \"$libname/$dataname/$machine\"" with errorlines pointtype 0
+    echo -n "\"$file\" using 1:((2*1000*1000*1000) / (\$3 * (1024*1024))) title \"$libname/$dataname/$machine\"" with lines
   done
   echo ""
 
@@ -76,7 +76,7 @@ function output_gnuplot_script() {
     fi
     first=0
 
-    echo -n "\"$file\" using 1:2 title \"$libname/$dataname/$machine\"" with errorlines pointtype 0
+    echo -n "\"$file\" using 1:2 title \"$libname/$dataname/$machine\"" with lines
   done
   echo ""
 
@@ -101,7 +101,7 @@ function output_gnuplot_script() {
     fi
     first=0
 
-    echo -n "\"$file\" using 1:3 title \"$libname/$dataname/$machine\"" with errorlines pointtype 0
+    echo -n "\"$file\" using 1:3 title \"$libname/$dataname/$machine\"" with lines
   done
   echo ""
 }
