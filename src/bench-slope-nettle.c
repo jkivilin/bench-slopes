@@ -580,7 +580,7 @@ static struct bench_ops xts_encrypt_ops = {
 };
 
 static struct bench_ops xts_decrypt_ops = {
-  &bench_encrypt_init,
+  &bench_decrypt_init,
   &bench_crypt_free,
   &bench_xts_decrypt_do_bench
 };
