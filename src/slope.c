@@ -525,7 +525,7 @@ slope_benchmark (struct bench_obj *obj, int is_auto_ghz)
     goto err_free;
   /* Get aligned buffer */
   buffer = real_buffer;
-  buffer += 128 - ((real_buffer - (unsigned char *) 0) & (128 - 1));
+  buffer += 128 - ((uintptr_t) real_buffer & (128 - 1));
   if (settings.unaligned_mode)
     buffer += settings.unaligned_mode; /* Make buffer unaligned */
 
