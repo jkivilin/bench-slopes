@@ -380,7 +380,7 @@ struct bench_hash_mode
 
   const EVP_MD *algo;
   EVP_MD_CTX *hd;
-  unsigned int digestlen;
+  int is_xof;
 };
 
 static const char *openssl_hashes[] =
@@ -427,7 +427,9 @@ bench_hash_init (struct bench_obj *obj)
     }
 
   mode->hd = hd;
-  mode->digestlen = EVP_MD_size(mode->algo);
+#ifdef EVP_MD_FLAG_XOF
+  mode->is_xof = (EVP_MD_flags(mode->algo) & EVP_MD_FLAG_XOF) != 0;
+#endif
 
   return 0;
 }
@@ -444,11 +446,19 @@ static void
 bench_hash_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
 {
   struct bench_hash_mode *mode = obj->priv;
-  unsigned char digest[mode->digestlen];
+  unsigned char digest[EVP_MAX_MD_SIZE];
   unsigned int digest_len = sizeof(digest);
 
   EVP_DigestInit_ex(mode->hd, NULL, NULL);
   EVP_DigestUpdate(mode->hd, buf, buflen);
+#ifdef EVP_MD_FLAG_XOF
+  /* XOFs have no default output length on newer OpenSSL. */
+  if (mode->is_xof)
+    {
+      EVP_DigestFinalXOF(mode->hd, digest, 32);
+      return;
+    }
+#endif
   EVP_DigestFinal_ex(mode->hd, digest, &digest_len);
 }
 
