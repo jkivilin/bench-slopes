@@ -1,4 +1,4 @@
-/* bench-slope-botan.cpp - libgcrypt style benchmark for Crypto++
+/* bench-slope-cryptopp.cpp - libgcrypt style benchmark for Crypto++
  * Copyright © 2020 Jussi Kivilinna <jussi.kivilinna@iki.fi>
  *
  * This file is part of Bench-slopes.

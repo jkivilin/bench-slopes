@@ -157,7 +157,7 @@ bench_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
     err = gcry_cipher_decrypt (hd, buf, buflen, buf, buflen);
   if (err)
     {
-      fprintf (stderr, PGM ": gcry_cipher_encrypt failed: %s\n",
+      fprintf (stderr, PGM ": gcry_cipher_decrypt failed: %s\n",
 	       gpg_strerror (err));
       gcry_cipher_close (hd);
       exit (1);
@@ -317,7 +317,7 @@ bench_ccm_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
   err = gcry_cipher_decrypt (hd, buf, buflen, buf, buflen);
   if (err)
     {
-      fprintf (stderr, PGM ": gcry_cipher_encrypt failed: %s\n",
+      fprintf (stderr, PGM ": gcry_cipher_decrypt failed: %s\n",
 	       gpg_strerror (err));
       gcry_cipher_close (hd);
       exit (1);
@@ -328,7 +328,7 @@ bench_ccm_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen)
     err = gpg_error (GPG_ERR_NO_ERROR);
   if (err)
     {
-      fprintf (stderr, PGM ": gcry_cipher_gettag failed: %s\n",
+      fprintf (stderr, PGM ": gcry_cipher_checktag failed: %s\n",
 	       gpg_strerror (err));
       gcry_cipher_close (hd);
       exit (1);
@@ -473,7 +473,7 @@ bench_aead_decrypt_do_bench (struct bench_obj *obj, void *buf, size_t buflen,
     err = gpg_error (GPG_ERR_NO_ERROR);
   if (err)
     {
-      fprintf (stderr, PGM ": gcry_cipher_gettag failed: %s\n",
+      fprintf (stderr, PGM ": gcry_cipher_checktag failed: %s\n",
            gpg_strerror (err));
       gcry_cipher_close (hd);
       exit (1);

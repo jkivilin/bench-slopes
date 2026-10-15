@@ -764,4 +764,4 @@ main (int argc, char **argv)
   return slope_main_template(argc, argv, groups, PGM, LIBNAME);
 }
 
-#endif /* HAVE_BOTAN3 */
+#endif /* HAVE_BOTAN3 || HAVE_BOTAN2 */

@@ -38,7 +38,7 @@
  * (SUPERCOP). */
 #define BUF_END_SIZE			(BUF_START_SIZE + 4096)
 
-/* With 128 byte steps, we get (4096)/64 = 64 data points. */
+/* With 64 byte steps, we get 4096/64 + 1 = 65 data points. */
 #define BUF_STEP_SIZE			64
 
 /* Number of repeated measurements at each data point. The median of these
