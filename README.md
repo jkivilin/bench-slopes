@@ -1,120 +1,50 @@
 # bench-slopes
 
 Bench-slopes is simple framework for benchmarking algorithm implementations in different
-cryptographic libraries. "bench-slope" tool was 
-[originally introduced](https://git.gnupg.org/cgi-bin/gitweb.cgi?p=libgcrypt.git;a=blob;f=tests/bench-slope.c)
-as part of libgcrypt library testing suite. This repository extends bench-slope for use with other crypto 
+cryptographic libraries. "bench-slope" tool was
+[originally introduced](https://github.com/gpg/libgcrypt/blob/master/tests/bench-slope.c)
+as part of libgcrypt library testing suite. This repository extends bench-slope for use with other crypto
 libraries.
 
 Repository currently has support for following libraries:
 
 - libgcrypt library, https://gnupg.org/software/libgcrypt/index.html
 - OpenSSL library, https://www.openssl.org/
-- nettle library, http://www.lysator.liu.se/~nisse/nettle/
+- nettle library, https://www.lysator.liu.se/~nisse/nettle/
 - Botan library, https://botan.randombit.net/
 - Crypto++ Library, https://www.cryptopp.com/
 
 ## How it works
 
-Benchmark measures speed of algorithm for different input sizes 16, 32, 48, 64, ..., 4096.
+Benchmark measures speed of algorithm for different input sizes 16, 80, 144, ..., 4112 (64 byte steps).
 From these data points, 'time per byte' slope is calculated. Since the 'time per byte' result
 is taken this way, any call overhead is eliminated from the result. Therefore results are close to
-'time/cycle per byte for large buffer' benchmarks seen in other benchmarking tools. 
+'time/cycle per byte for large buffer' benchmarks seen in other benchmarking tools.
 
 # Building
 
 ## Prerequisites
 
-Following packages are needed for building on Ubuntu 20.10: "automake autoconf pkg-config make gcc g++ 
-libgcrypt20-dev libssl-dev nettle-dev libcrypto++-dev libbotan-2-dev".
+Following packages are needed for building on Ubuntu 26.04: "autoconf automake pkg-config make gcc g++
+libgcrypt20-dev libssl-dev nettle-dev libcrypto++-dev libbotan-3-dev".
 
-Package names maybe different on other distributions.
+Package names maybe different on other distributions. Botan 3 requires a C++20 compiler; Botan 2
+is also supported. Libraries that are not found are skipped: configure prints a warning and
+the corresponding program is built as a stub that only reports the missing library.
+
+With OpenSSL 3, legacy algorithms (Blowfish, CAST5, IDEA, RC4, MD4, Whirlpool, etc.) are
+benchmarked only if the OpenSSL legacy provider module is installed.
 
 ## Compiling
 
-- Run './autogen.sh' script
-<pre>
-$ ./autogen.sh 
-configure.ac:14: installing './compile'
-configure.ac:46: installing './config.guess'
-configure.ac:46: installing './config.sub'
-configure.ac:7: installing './install-sh'
-configure.ac:7: installing './missing'
-src/Makefile.am: installing './depcomp'
-</pre>
-
-- Configure in 'build' directory
-<pre>
+```
+$ ./autogen.sh
 $ cd build/
 build/ $ ../configure
-checking for a BSD-compatible install... /usr/bin/install -c
-checking whether build environment is sane... yes
-checking for a thread-safe mkdir -p... /usr/bin/mkdir -p
-checking for gawk... no
-checking for mawk... mawk
-checking whether make sets $(MAKE)... no
-checking whether make supports nested variables... no
-checking for gcc... gcc
-checking whether the C compiler works... yes
-...
-checking pkg-config is at least version 0.9.0... yes
-checking for OPENSSL... yes
-checking build system type... x86_64-pc-linux-gnu
-checking host system type... x86_64-pc-linux-gnu
-checking for libgcrypt-config... /usr/bin/libgcrypt-config
-checking for LIBGCRYPT - version >= 1.8.0... yes (1.8.5)
-checking for libgcrypt-config... (cached) /usr/bin/libgcrypt-config
-checking for LIBGCRYPT - version >= 1.6.0... yes (1.8.5)
-checking for gpg-error-config... /usr/bin/gpg-error-config
-checking for gpgrt-config... /usr/bin/gpgrt-config
-configure: Use gpgrt-config with /usr/lib/x86_64-linux-gnu as gpg-error-config
-checking for GPG Error - version >= 1.0... yes (1.37)
-checking for botan... yes
-checking for cryptopp... yes
-checking that generated files are newer than configure... done
-configure: creating ./config.status
-config.status: creating Makefile
-config.status: creating src/Makefile
-config.status: creating config.h
-config.status: config.h is unchanged
-config.status: executing depfiles commands
-</pre>
-
-- Compile with 'make'
-<pre>
 build/ $ make
-make  all-recursive
-make[1]: Entering directory '/root/bench-slopes/build'
-Making all in src
-make[2]: Entering directory '/root/bench-slopes/build/src'
-gcc -DHAVE_CONFIG_H -I. -I../../src -I..     -Wall -MT slope.o -MD -MP -MF .deps/slope.Tpo -c -o slope.o ../../src/slope.c
-mv -f .deps/slope.Tpo .deps/slope.Po
-gcc -DHAVE_CONFIG_H -I. -I../../src -I..     -Wall -MT bench-slope-openssl.o -MD -MP -MF .deps/bench-slope-openssl.Tpo -c -o bench-slope-openssl.o ../../src/bench-slope-openssl.c
-mv -f .deps/bench-slope-openssl.Tpo .deps/bench-slope-openssl.Po
-gcc  -Wall   -o bench-slope-openssl slope.o bench-slope-openssl.o -lssl -lcrypto 
-gcc -DHAVE_CONFIG_H -I. -I../../src -I..     -Wall -MT bench-slope-nettle.o -MD -MP -MF .deps/bench-slope-nettle.Tpo -c -o bench-slope-nettle.o ../../src/bench-slope-nettle.c
-mv -f .deps/bench-slope-nettle.Tpo .deps/bench-slope-nettle.Po
-gcc  -Wall   -o bench-slope-nettle slope.o bench-slope-nettle.o -lnettle
-gcc -DHAVE_CONFIG_H -I. -I../../src -I..     -Wall -MT bench-slope-gcrypt.o -MD -MP -MF .deps/bench-slope-gcrypt.Tpo -c -o bench-slope-gcrypt.o ../../src/bench-slope-gcrypt.c
-mv -f .deps/bench-slope-gcrypt.Tpo .deps/bench-slope-gcrypt.Po
-gcc  -Wall   -o bench-slope-gcrypt slope.o bench-slope-gcrypt.o -L/usr/lib/x86_64-linux-gnu -lgcrypt -L/usr/lib/x86_64-linux-gnu -lgpg-error 
-gcc -DHAVE_CONFIG_H -I. -I../../src -I..    -I/usr//include/botan-2 -Wall -MT bench_slope_botan-slope.o -MD -MP -MF .deps/bench_slope_botan-slope.Tpo -c -o bench_slope_botan-slope.o `test -f 'slope.c' || echo '../../src/'`slope.c
-mv -f .deps/bench_slope_botan-slope.Tpo .deps/bench_slope_botan-slope.Po
-g++ -DHAVE_CONFIG_H -I. -I../../src -I..    -I/usr//include/botan-2 -Wall -MT bench_slope_botan-bench-slope-botan.o -MD -MP -MF .deps/bench_slope_botan-bench-slope-botan.Tpo -c -o bench_slope_botan-bench-slope-botan.o `test -f 'bench-slope-botan.cpp' || echo '../../src/'`bench-slope-botan.cpp
-mv -f .deps/bench_slope_botan-bench-slope-botan.Tpo .deps/bench_slope_botan-bench-slope-botan.Po
-g++ -I/usr//include/botan-2 -Wall   -o bench-slope-botan bench_slope_botan-slope.o bench_slope_botan-bench-slope-botan.o -lbotan-2 -fstack-protector -m64 -pthread 
-gcc -DHAVE_CONFIG_H -I. -I../../src -I..     -Wall -MT bench_slope_cryptopp-slope.o -MD -MP -MF .deps/bench_slope_cryptopp-slope.Tpo -c -o bench_slope_cryptopp-slope.o `test -f 'slope.c' || echo '../../src/'`slope.c
-mv -f .deps/bench_slope_cryptopp-slope.Tpo .deps/bench_slope_cryptopp-slope.Po
-g++ -DHAVE_CONFIG_H -I. -I../../src -I..     -Wall -MT bench_slope_cryptopp-bench-slope-cryptopp.o -MD -MP -MF .deps/bench_slope_cryptopp-bench-slope-cryptopp.Tpo -c -o bench_slope_cryptopp-bench-slope-cryptopp.o `test -f 'bench-slope-cryptopp.cpp' || echo '../../src/'`bench-slope-cryptopp.cpp
-mv -f .deps/bench_slope_cryptopp-bench-slope-cryptopp.Tpo .deps/bench_slope_cryptopp-bench-slope-cryptopp.Po
-g++  -Wall   -o bench-slope-cryptopp bench_slope_cryptopp-slope.o bench_slope_cryptopp-bench-slope-cryptopp.o -lcrypto++ 
-cat ../../src/plot_raw_results.sh.in > plot_raw_results.sh
-chmod +x plot_raw_results.sh
-make[2]: Leaving directory '/root/bench-slopes/build/src'
-make[2]: Entering directory '/root/bench-slopes/build'
-make[2]: Leaving directory '/root/bench-slopes/build'
-make[1]: Leaving directory '/root/bench-slopes/build'
-</pre>
+```
+
+'autogen.sh' generates the configure script and creates the 'build' directory.
 
 ## Build binaries
 
@@ -130,59 +60,67 @@ in to 'build/src/' directory. These are:
 ## Compiling directly with external library
 
 Each program can be compiled also directly. For example:
-<pre>
-$ gcc -O2 -DHAVE_CLOCK_GETTIME src/slope.c src/bench-slope-gcrypt.c -o bench-slope -I /usr/include -l gcrypt -l gpg-error
-$ ./bench-slope 
-bench-slope-gcrypt: libgcrypt: 1.10.1
+```
+$ gcc -O2 -DHAVE_CLOCK_GETTIME -DHAVE_LIBGCRYPT_1_8 -DHAVE_LIBGCRYPT_1_9 -DHAVE_LIBGCRYPT_1_10 \
+    src/slope.c src/bench-slope-gcrypt.c -o bench-slope -lgcrypt -lgpg-error
+$ ./bench-slope
+bench-slope-gcrypt: libgcrypt: 1.12.0
 ...
-</pre>
+```
+
+Without config.h, the HAVE_LIBGCRYPT_1_x defines enable benchmarks for cipher modes added in
+the respective libgcrypt versions (XTS, EAX, SIV and GCM-SIV). Leave out the ones newer than the
+installed libgcrypt.
 
 # Command-line options for bench-slope programs
 
 Command-line help can be shown for each program with --help option:
-<pre>
+```
 $ src/bench-slope-gcrypt --help
-bench-slope-gcrypt: libgcrypt: 1.10.1
+bench-slope-gcrypt: libgcrypt: 1.12.0
 usage: bench-slope-gcrypt [options] [hash|mac|cipher|kdf]
 
  options:
-   --cpu-mhz &lt;mhz&gt;           Set CPU speed for calculating cycles
+   --cpu-mhz <mhz>           Set CPU speed for calculating cycles
                              per bytes results.  Set as "auto"
                              for auto-detection of CPU speed.
-   --repetitions &lt;n&gt;         Use N repetitions (default 64)
+   --repetitions <n>         Use N repetitions (default 64)
    --unaligned               Use unaligned input buffers.
    --csv                     Use CSV output format
    --raw                     Output raw benchmark data in CSV output format
    --machine <name>          Machine name used for raw benchmark files
-</pre>
+```
+
+Benchmark groups 'hash' and 'cipher' are available in all programs. 'mac' and 'kdf' are
+available only in bench-slope-gcrypt.
 
 # Running benchmarks
 
 ## All algorithms
 
-Without any command-line options, each program runs benchmarks for all algorithms. 
+Without any command-line options, each program runs benchmarks for all algorithms.
 
 For example, following runs all benchmarks for OpenSSL:
-<pre>
+```
 $ src/bench-slope-openssl
-bench-slope-openssl: OpenSSL 1.1.1f  31 Mar 2020
+bench-slope-openssl: OpenSSL 3.5.5 27 Jan 2026
 Hash:
                 |  nanosecs/byte   mebibytes/sec   cycles/byte
- MD4            |     0.677 ns/B    1407.8 MiB/s         - c/B
- MD5            |      1.14 ns/B     834.1 MiB/s         - c/B
- BLAKE2b512     |     0.949 ns/B    1005.2 MiB/s         - c/B
- BLAKE2s256     |      1.65 ns/B     576.4 MiB/s         - c/B
+ MD4            |     0.498 ns/B    1914.1 MiB/s         - c/B
+ MD5            |     0.820 ns/B    1163.6 MiB/s         - c/B
+ BLAKE2b512     |     0.531 ns/B    1796.9 MiB/s         - c/B
+ BLAKE2s256     |     0.894 ns/B    1066.4 MiB/s         - c/B
 ...
- SHAKE256       |      1.91 ns/B     499.3 MiB/s         - c/B
+ SM3            |      1.47 ns/B     649.0 MiB/s         - c/B
                 =
 Cipher:
  des-ede3       |  nanosecs/byte   mebibytes/sec   cycles/byte
-        ECB enc |     25.84 ns/B     36.91 MiB/s         - c/B
-        ECB dec |     25.80 ns/B     36.97 MiB/s         - c/B
-        CBC enc |     26.62 ns/B     35.83 MiB/s         - c/B
-        CBC dec |     25.82 ns/B     36.94 MiB/s         - c/B
+        ECB enc |     19.40 ns/B     49.15 MiB/s         - c/B
+        ECB dec |     19.35 ns/B     49.29 MiB/s         - c/B
+        CBC enc |     20.48 ns/B     46.58 MiB/s         - c/B
+        CBC dec |     19.52 ns/B     48.85 MiB/s         - c/B
 ...
-</pre>
+```
 
 ## Specific algorithms
 
@@ -190,34 +128,35 @@ Benchmarks can be limited to specific groups (such as 'hash', 'cipher', etc) and
 to specific algorithms.
 
 For example, running only cipher algorithm benchmarks on nettle:
-<pre>
+```
 $ src/bench-slope-nettle cipher
-bench-slope-nettle: Nettle 3.5
+bench-slope-nettle: Nettle 3.10
 Cipher:
  aes128         |  nanosecs/byte   mebibytes/sec   cycles/byte
-        ECB enc |      2.34 ns/B     407.9 MiB/s         - c/B
-        ECB dec |      2.34 ns/B     408.4 MiB/s         - c/B
-        CBC enc |      3.04 ns/B     313.7 MiB/s         - c/B
-        CBC dec |      2.41 ns/B     394.9 MiB/s         - c/B
-        CTR enc |      2.43 ns/B     393.0 MiB/s         - c/B
+        ECB enc |     0.058 ns/B   16472.9 MiB/s         - c/B
+        ECB dec |     0.058 ns/B   16482.7 MiB/s         - c/B
+        CBC enc |     0.498 ns/B    1915.5 MiB/s         - c/B
+        CBC dec |     0.074 ns/B   12876.4 MiB/s         - c/B
+        CFB enc |     0.697 ns/B    1367.3 MiB/s         - c/B
 ...
-</pre>
+```
 
 For example, running SHA1 and SHA512 benchmarks on OpenSSL:
-<pre>
+```
 $ src/bench-slope-openssl hash sha1 sha512
-bench-slope-openssl: OpenSSL 1.1.1f  31 Mar 2020
+bench-slope-openssl: OpenSSL 3.5.5 27 Jan 2026
 Hash:
                 |  nanosecs/byte   mebibytes/sec   cycles/byte
- SHA1           |     0.435 ns/B    2192.5 MiB/s         - c/B
- SHA512         |      1.09 ns/B     877.6 MiB/s         - c/B
-</pre>
+ SHA1           |     0.349 ns/B    2733.0 MiB/s         - c/B
+ SHA512         |     0.636 ns/B    1499.8 MiB/s         - c/B
+                =
+```
 
 ## CPU Mhz and 'cycles per byte' results, --cpu-mhz <mhz>
 
 If you know clock frequency of the CPU on which benchmarks are run, you can supply
 CPU Mhz value with '--cpu-mhz &lt;mhz&gt;' option. With help of this information, bench-slope
-will be able to calculate 'cycles per byte' metric for each algorithm. 
+will be able to calculate 'cycles per byte' metric for each algorithm.
 
 Approach of giving fixed &lt;mhz&gt; only works on CPUs with fixed CPU frequency. For CPUs
 with dynamic frequency scaling, you can try '--cpu-mhz auto' setting. With auto-setting
@@ -232,26 +171,30 @@ CPU frequency detection currently does not work on following architectures:
 (Detection algorithms fails on above cases since routine depends on 'instruction to
 instruction' latency for simple arithmetic operations to be one cycle.)
 
-Running Botan benchmarks on CPU with fixed frequency of 6.0 Ghz:
-<pre>
-src/bench-slope-cryptopp --cpu-mhz 6000 hash CRC32 MD5
-bench-slope-cryptopp: Crypto++ 5.6.5
+Running Crypto++ benchmarks on CPU with fixed frequency of 5.5 Ghz:
+```
+$ src/bench-slope-cryptopp --cpu-mhz 5500 hash CRC32 MD5
+bench-slope-cryptopp: Crypto++ 8.9.0
 Hash:
                 |  nanosecs/byte   mebibytes/sec   cycles/byte
- CRC32          |      2.12 ns/B     450.8 MiB/s     12.69 c/B
- MD5            |      1.81 ns/B     525.9 MiB/s     10.88 c/B
-</pre>
+ CRC32          |      1.31 ns/B     725.7 MiB/s      7.23 c/B
+ MD5            |     0.950 ns/B    1003.7 MiB/s      5.23 c/B
+                =
+```
 
 Running libgcrypt benchmarks on CPU with dynamic frequency with auto-detection:
 
-<pre>
-$ src/bench-slope-gcrypt --cpu-mhz auto hash sha1 ripemd160
-bench-slope-gcrypt: libgcrypt: 1.8.5
+```
+$ src/bench-slope-gcrypt --cpu-mhz auto hash sha1 ripemd160
+bench-slope-gcrypt: libgcrypt: 1.12.0
 Hash:
                 |  nanosecs/byte   mebibytes/sec   cycles/byte  auto Mhz
- SHA1           |     0.803 ns/B    1188.0 MiB/s      3.49 c/B    4348.7
- RIPEMD160      |      1.82 ns/B     524.0 MiB/s      7.89 c/B    4336.7
-</pre>
+ SHA1           |     0.347 ns/B    2744.8 MiB/s      1.92 c/B    5515.3
+ RIPEMD160      |      1.16 ns/B     822.0 MiB/s      6.40 c/B    5519.6±0.1
+                =
+```
+
+The '±' value shows how much the detected frequency changed during the measurement.
 
 ## Number of repetitions, --repetitions <n>
 
@@ -271,21 +214,63 @@ format.
 
 For example:
 
-<pre>
+```
 $ src/bench-slope-gcrypt --cpu-mhz auto --csv hash sha1 ripemd160
-bench-slope-gcrypt: libgcrypt: 1.8.5
-hash,SHA1,,,,0.810,ns/B,1176.8,MiB/s,3.52,c/B,4340.2,Mhz,0.8,Mhz-diff
-hash,RIPEMD160,,,,1.82,ns/B,524.7,MiB/s,7.95,c/B,4374.1,Mhz
-</pre>
+bench-slope-gcrypt: libgcrypt: 1.12.0
+hash,SHA1,,,,0.348,ns/B,2739.5,MiB/s,1.92,c/B,5525.4,Mhz,0.2,Mhz-diff
+hash,RIPEMD160,,,,1.15,ns/B,827.3,MiB/s,6.36,c/B,5519.6,Mhz,0.4,Mhz-diff
+```
 
 ## Raw data mode, --raw
 
-TODO: Describe raw mode, which is completely different from normal mode.
-TODO: Describe 'plot_raw_results.sh'
+Raw mode does not calculate a slope. Instead it measures each algorithm at input sizes
+16, 32, 64, ..., 2097152 bytes (doubling) and writes the measurements to a CSV file per
+algorithm and mode in the current directory. This shows how performance depends on input
+length, for example the effect of call overhead on short inputs.
+
+Raw mode requires '--cpu-mhz' (a fixed value or 'auto') and cannot be combined with '--csv'.
+The 'kdf' group is skipped in raw mode.
+
+Files are named `<library>_results_for_<group>_<algorithm>_<mode>_on_<machine>.csv`,
+with '/', '\\' and space characters replaced by '-'. Each line has three columns: input
+length in bytes, cycles for processing the input, and cycles per byte.
+
+```
+$ src/bench-slope-gcrypt --raw --cpu-mhz auto --machine desktop hash sha256
+bench-slope-gcrypt: libgcrypt: 1.12.0
+Writing results to file "libgcrypt_results_for_hash_SHA256__on_desktop.csv"...
+$ cat libgcrypt_results_for_hash_SHA256__on_desktop.csv
+16,262,16.39
+32,262,8.20
+64,345,5.39
+128,469,3.67
+...
+1048576,2133570,2.03
+2097152,4277740,2.04
+```
+
+### Plotting raw results
+
+'plot_raw_results.sh' (built to 'build/src/') plots raw result files into PDF files using
+gnuplot. Run it in the directory containing the CSV files, for example after collecting raw
+results from several libraries and machines into one directory. The script requires bash and
+gnuplot.
+
+The script covers a predefined set of common algorithms (AES, Camellia, ChaCha20, SHA-2, etc.).
+For each algorithm and mode, results of all libraries and machines are combined into one PDF
+file, for example `results_cipher_AES128-CBC.pdf`, with three plots by input length: speed
+in MiB/s scaled to a 2 Ghz CPU, absolute cycles, and cycles per byte.
+
+Example 'cycles per byte' plot of SHA-256 raw results from all five libraries on AMD Ryzen 9 9950X3D
+(results collected with '--raw --cpu-mhz auto --machine zen5 hash sha256', or 'SHA-256' for
+Botan and Crypto++):
+
+![Cycles per byte by data length for SHA-256](doc/raw-plot-example.png)
 
 ## Machine name, --machine <name>
 
-TODO: Describe (used with --raw)
+Sets the machine name used in raw mode file names (`_on_<machine>.csv`), so that
+results from different machines can be stored in the same directory and plotted together.
 
 # License
 
