@@ -59,50 +59,10 @@ static struct
 
 /**************************************************** High-resolution timers. */
 
-/* This benchmarking module needs needs high resolution timer.  */
-#undef NO_GET_NSEC_TIME
-#if defined(_WIN32)
-struct nsec_time
-{
-  LARGE_INTEGER perf_count;
-};
+#ifndef HAVE_CLOCK_GETTIME
+#error "clock_gettime() is required"
+#endif
 
-static void
-get_nsec_time (struct nsec_time *t)
-{
-  BOOL ok;
-
-  ok = QueryPerformanceCounter (&t->perf_count);
-  assert (ok);
-}
-
-static double
-get_time_nsec_diff (struct nsec_time *start, struct nsec_time *end)
-{
-  static double nsecs_per_count = 0.0;
-  double nsecs;
-
-  if (nsecs_per_count == 0.0)
-    {
-      LARGE_INTEGER perf_freq;
-      BOOL ok;
-
-      /* Get counts per second. */
-      ok = QueryPerformanceFrequency (&perf_freq);
-      assert (ok);
-
-      nsecs_per_count = 1.0 / perf_freq.QuadPart;
-      nsecs_per_count *= 1000000.0 * 1000.0;	/* sec => nsec */
-
-      assert (nsecs_per_count > 0.0);
-    }
-
-  nsecs = end->perf_count.QuadPart - start->perf_count.QuadPart;	/* counts */
-  nsecs *= nsecs_per_count;	/* counts * (nsecs / count) => nsecs */
-
-  return nsecs;
-}
-#elif defined(HAVE_CLOCK_GETTIME)
 struct nsec_time
 {
   struct timespec ts;
@@ -133,57 +93,6 @@ get_time_nsec_diff (struct nsec_time *start, struct nsec_time *end)
 
   return nsecs;
 }
-#elif defined(HAVE_GETTIMEOFDAY)
-struct nsec_time
-{
-  struct timeval tv;
-};
-
-static void
-get_nsec_time (struct nsec_time *t)
-{
-  int err;
-
-  err = gettimeofday (&t->tv, NULL);
-  assert (err == 0);
-}
-
-static double
-get_time_nsec_diff (struct nsec_time *start, struct nsec_time *end)
-{
-  double nsecs;
-
-  nsecs = end->tv.tv_sec - start->tv.tv_sec;
-  nsecs *= 1000000;		/* sec => µsec */
-
-  /* This way we don't have to care if tv_usec unsigned or signed. */
-  if (end->tv.tv_usec >= start->tv.tv_usec)
-    nsecs += end->tv.tv_usec - start->tv.tv_usec;
-  else
-    nsecs -= start->tv.tv_usec - end->tv.tv_usec;
-
-  nsecs *= 1000;		/* µsec => nsec */
-
-  return nsecs;
-}
-#else
-#define NO_GET_NSEC_TIME 1
-#endif
-
-
-/* If no high resolution timer found, provide dummy bench-slope.  */
-#ifdef NO_GET_NSEC_TIME
-
-
-static double
-slope_benchmark (struct bench_obj *obj, int is_auto_ghz)
-{
-#warning "no high resolution timer found!"
-  return 0.0;
-}
-
-
-#else /* !NO_GET_NSEC_TIME */
 
 
 /********************************************** Slope benchmarking framework. */
@@ -575,9 +484,6 @@ err_free:
 
   return -1;
 }
-
-
-#endif /* !NO_GET_NSEC_TIME */
 
 
 /********************************************* CPU frequency auto-detection. */
@@ -1079,7 +985,6 @@ print_help (const struct bench_group *bench_groups, const char *pgm)
 static void
 warm_up_cpu (void)
 {
-#ifndef NO_GET_NSEC_TIME
   struct nsec_time start, end;
 
   get_nsec_time (&start);
@@ -1088,7 +993,6 @@ warm_up_cpu (void)
       get_nsec_time (&end);
     }
   while (get_time_nsec_diff (&start, &end) < 1000.0 * 1000.0 * 1000.0);
-#endif /* !NO_GET_NSEC_TIME */
 }
 
 
