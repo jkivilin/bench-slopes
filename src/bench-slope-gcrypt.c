@@ -1167,6 +1167,10 @@ bench_mac_init (struct bench_obj *obj)
     case GCRY_MAC_POLY1305_TWOFISH:
     case GCRY_MAC_POLY1305_SERPENT:
     case GCRY_MAC_POLY1305_SEED:
+#if GCRYPT_VERSION_NUMBER >= 0x010b00
+    case GCRY_MAC_POLY1305_SM4:
+    case GCRY_MAC_POLY1305_ARIA:
+#endif
       gcry_mac_setiv (hd, key, 16);
       break;
     }
