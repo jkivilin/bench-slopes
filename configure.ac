@@ -99,12 +99,14 @@ AM_PATH_GPG_ERROR("1.0")
 
 # Check for botan
 PKG_CHECK_MODULES(botan3, [botan-3], [AC_DEFINE(HAVE_BOTAN3,1,"Have botan-3")],
-	[PKG_CHECK_MODULES(botan2, [botan-2], [AC_DEFINE(HAVE_BOTAN2,1,"Have botan-2")])])
+	[PKG_CHECK_MODULES(botan2, [botan-2], [AC_DEFINE(HAVE_BOTAN2,1,"Have botan-2")],
+		[AC_MSG_WARN([Botan not found, bench-slope-botan will be a stub])])])
 BOTAN_LIBS="$botan3_LIBS $botan2_LIBS"
 BOTAN_CFLAGS="$botan3_CFLAGS $botan2_CFLAGS"
 
 # Check for Crypto++
-PKG_CHECK_MODULES(cryptopp, [libcrypto++], [AC_DEFINE(HAVE_CRYPTOPP,1,"Have Crypto++")])
+PKG_CHECK_MODULES(cryptopp, [libcrypto++], [AC_DEFINE(HAVE_CRYPTOPP,1,"Have Crypto++")],
+	[AC_MSG_WARN([Crypto++ not found, bench-slope-cryptopp will be a stub])])
 CRYPTOPP_LIBS=$cryptopp_LIBS
 CRYPTOPP_CFLAGS=$cryptopp_CFLAGS
 
