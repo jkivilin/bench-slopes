@@ -686,17 +686,15 @@ get_auto_ghz (void)
 {
   struct bench_obj obj = { 0 };
   double nsecs_per_iteration;
-  double cycles_per_iteration;
 
   obj.ops = &auto_ghz_detect_ops;
 
   nsecs_per_iteration = slope_benchmark (&obj, 1);
+  if (nsecs_per_iteration <= 0)
+    return -1;
 
-  cycles_per_iteration = nsecs_per_iteration * settings.cpu_ghz;
-
-  /* Adjust CPU Ghz so that cycles per iteration would give '1024.0'. */
-
-  return safe_div(settings.cpu_ghz * 1024, cycles_per_iteration);
+  /* One iteration takes 1024 cycles. */
+  return 1024 / nsecs_per_iteration;
 }
 
 
@@ -748,7 +746,8 @@ do_slope_benchmark (struct bench_obj *obj)
           diff = 1.0 - safe_div(cpu_auto_ghz_before, cpu_auto_ghz_after);
           diff = diff < 0 ? -diff : diff;
         }
-      while ((nsecs_per_iteration <= 0 || diff > target_diff)
+      while ((nsecs_per_iteration <= 0 || cpu_auto_ghz_before <= 0
+	      || cpu_auto_ghz_after <= 0 || diff > target_diff)
 	     && try_count < 1000);
 
       ret = nsecs_per_iteration;
@@ -859,6 +858,7 @@ bench_print_result_csv (double nsecs_per_byte)
   strcpy (mhz_diff_buf, "");
 
   *cpbyte_buf = 0;
+  *mhz_buf = 0;
 
   double_to_str (nsecpbyte_buf, sizeof (nsecpbyte_buf), nsecs_per_byte);
 

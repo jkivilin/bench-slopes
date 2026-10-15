@@ -1373,6 +1373,7 @@ kdf_bench_one (int algo, int subalgo)
   nsecs_per_iteration = do_slope_benchmark (&obj);
 
   strcpy(cpiter_buf, settings.csv_mode ? "" : "-");
+  strcpy(mhz_buf, settings.csv_mode ? "" : "-");
 
   double_to_str (nsecpiter_buf, sizeof (nsecpiter_buf), nsecs_per_iteration);
 
