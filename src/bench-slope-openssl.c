@@ -41,6 +41,9 @@ int main(void)
 #include "slope.h"
 
 #include <openssl/evp.h>
+#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
+#include <openssl/provider.h>
+#endif
 
 #ifndef STR
 #define STR(v) #v
@@ -564,6 +567,14 @@ main (int argc, char **argv)
   printf("%s: %s\n", PGM, OPENSSL_VERSION_TEXT);
 
   OpenSSL_add_all_algorithms();
+
+#if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
+  /* Legacy algorithms (bf, cast5, idea, rc4, md4, whirlpool, ...) live in
+   * the legacy provider. Loading any provider explicitly disables the
+   * implicit default one, so load both. */
+  OSSL_PROVIDER_load (NULL, "legacy");
+  OSSL_PROVIDER_load (NULL, "default");
+#endif
 
   return slope_main_template(argc, argv, groups, PGM, LIBNAME);
 }
