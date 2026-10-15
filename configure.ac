@@ -12,7 +12,7 @@ if test "$CFLAGS" = "" ; then
 fi
 
 if test "$CXXFLAGS" = "" ; then
-    CXXFLAGS="-O2 -std=c++20"
+    CXXFLAGS="-O2"
 fi
 
 CFLAGS="$CFLAGS -Wall"
@@ -21,6 +21,28 @@ CXXFLAGS="$CXXFLAGS -Wall"
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_CXX
+
+# Botan 3 requires C++20. The switch goes into CXX so that a user-supplied
+# CXXFLAGS does not drop it.
+AC_LANG_PUSH([C++])
+AC_CACHE_CHECK([for $CXX option to enable C++20], [bs_cv_cxx20_switch],
+  [bs_cv_cxx20_switch=no
+   saved_CXX=$CXX
+   for switch in "" -std=c++20; do
+     CXX="$saved_CXX $switch"
+     AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
+#if __cplusplus < 202002L
+#error C++20 required
+#endif
+]])], [bs_cv_cxx20_switch="${switch:-none needed}"; break])
+   done
+   CXX=$saved_CXX])
+AC_LANG_POP([C++])
+case "$bs_cv_cxx20_switch" in
+  no) AC_MSG_WARN([$CXX does not support C++20, C++ benchmarks may fail to build]) ;;
+  "none needed") ;;
+  *) CXX="$CXX $bs_cv_cxx20_switch" ;;
+esac
 
 # Checks for libraries.
 
