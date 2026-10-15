@@ -1179,15 +1179,16 @@ slope_main_template (int argc, char **argv,
 	  argv++;
 	  if (argc)
 	    {
-	      settings.num_measurement_repetitions = atof (*argv);
-	      if (settings.num_measurement_repetitions < 2)
+	      long reps = strtol (*argv, NULL, 10);
+
+	      if (reps < 2)
 		{
 		  fprintf (stderr,
 			  "%s: value for --repetitions too small - using %d\n",
 			  pgm, NUM_MEASUREMENT_REPETITIONS);
-		  settings.num_measurement_repetitions =
-		    NUM_MEASUREMENT_REPETITIONS;
+		  reps = NUM_MEASUREMENT_REPETITIONS;
 		}
+	      settings.num_measurement_repetitions = reps;
 	      argc--;
 	      argv++;
 	    }
@@ -1236,6 +1237,7 @@ slope_main_template (int argc, char **argv,
 	{
 	  fprintf (stderr, "%s: unknown argument: %s\n", pgm, *argv);
 	  print_help (bench_groups, pgm);
+	  return 1;
 	}
     }
 
