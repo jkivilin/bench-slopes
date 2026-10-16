@@ -142,7 +142,7 @@ function plot_blockcipher() {
   do_plot cipher "$bcipher-CFB" "" "_CFB" "${array[@]}"
   do_plot cipher "$bcipher-XTS" "" "_XTS" "${array[@]}"
   do_plot cipher "$bcipher-CTR" "-dec_" "_CTR" "${array[@]}"
-  do_plot cipher "$bcipher-GCM" "-auth_" "_GCM" "${array[@]}"
+  do_plot cipher "$bcipher-GCM" "-auth_" "_GCM-[ed]" "${array[@]}"
   do_plot cipher "$bcipher-CCM" "-auth_" "_CCM" "${array[@]}"
   do_plot cipher "$bcipher-EAX" "-auth_" "_EAX" "${array[@]}"
   do_plot cipher "$bcipher-OCB" "-auth_" "_OCB" "${array[@]}"
@@ -150,17 +150,17 @@ function plot_blockcipher() {
 
 plot_blockcipher "AES128" AES-128 aes-128 aes128 AES &
 plot_blockcipher "AES256" AES-256 aes-256 aes256 AES256 &
-plot_blockcipher "Camellia128" camellia-128 camellia128 Camellia-128 CAMELLIA128 &
+plot_blockcipher "Camellia128" camellia-128 camellia128 Camellia-128 CAMELLIA128 Camellia &
 plot_blockcipher "Camellia256" camellia-256 camellia256 Camellia-256 CAMELLIA256 &
 plot_blockcipher "Twofish" twofish128 Twofish TWOFISH128 &
 plot_blockcipher "Serpent" serpent128 Serpent SERPENT128 &
 plot_blockcipher "SEED" seed SEED &
-plot_blockcipher "3DES" des-ede3 des3 3DES &
+plot_blockcipher "3DES" des-ede3 des3 3DES DES-EDE3 &
 plot_blockcipher "Blowfish" bf blowfish Blowfish BLOWFISH &
 plot_blockcipher "CAST5" cast5 cast128 CAST-128 CAST5 &
 plot_blockcipher "SM4" SM4 sm4 &
 
-do_plot cipher "RC4" "STREAM-dec_" "_STREAM" rc4 RC4 arcfour ARCFOUR &
+do_plot cipher "RC4" "STREAM-dec_" "_STREAM" rc4 RC4 arcfour ARCFOUR ARC4 &
 do_plot cipher "ChaCha20" "STREAM-dec_" "_STREAM" chacha20 chacha CHACHA20 ChaCha &
 do_plot cipher "ChaCha20-Poly1305" "-auth_" "_POLY1305" chacha20 chacha CHACHA20 ChaCha &
 
@@ -168,9 +168,9 @@ do_plot hash "MD5" "" "" MD5 md5 &
 do_plot hash "SHA1" "" "" SHA1 sha1 SHA-1 &
 do_plot hash "SHA256" "" "" SHA256 sha256 SHA-256 &
 do_plot hash "SHA512" "" "" SHA512 sha512 SHA-512 &
-do_plot hash "SHA3-256" "" "" SHA3-256 sha3_256 &
-do_plot hash "BLAKE2S-256" "" "" BLAKE2s256 BLAKE2S_256 &
-do_plot hash "BLAKE2B-512" "" "" BLAKE2b512 BLAKE2B_512 &
+do_plot hash "SHA3-256" "" "" SHA3-256 sha3_256 'SHA-3(256)' &
+do_plot hash "BLAKE2S-256" "" "" BLAKE2s256 BLAKE2S_256 BLAKE2s_ &
+do_plot hash "BLAKE2B-512" "" "" BLAKE2b512 BLAKE2B_512 'BLAKE2b(512)' BLAKE2b_ &
 do_plot hash "RIPEMD160" "" "" RIPEMD160 RIPEMD-160 ripemd160 &
 do_plot hash "Whirlpool" "" "" WHIRLPOOL whirlpool Whirlpool &
 do_plot hash "SM3" "" "" SM3 sm3 &
