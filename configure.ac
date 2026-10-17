@@ -48,6 +48,7 @@ esac
 
 # Checks for header files.
 AC_CHECK_HEADERS([stdlib.h string.h stdint.h])
+AC_CHECK_HEADERS([linux/perf_event.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_TYPE_SIZE_T
@@ -56,6 +57,7 @@ AC_TYPE_UINT64_T
 # Checks for library functions.
 AC_FUNC_MALLOC
 AC_SEARCH_LIBS([clock_gettime],[rt posix4])
+AC_SEARCH_LIBS([sqrt],[m])
 AC_CHECK_FUNCS([clock_gettime strdup])
 AC_CHECK_FUNCS([dlsym])
 

@@ -163,13 +163,16 @@ with dynamic frequency scaling, you can try '--cpu-mhz auto' setting. With auto-
 bench-slope attempts to detect CPU frequency at the time of each algorithm is run and
 use this detected frequency to generate 'cycles per byte' metrics.
 
-CPU frequency detection currently does not work on following architectures:
+On Linux, the frequency is measured with the hardware cycle counter (perf_event), which
+requires 'kernel.perf_event_paranoid' to be 2 or lower, or CAP_PERFMON. The counter is read during the
+benchmark itself, so the result reflects the clock while the algorithm runs, which can
+be lower than usual under heavy vector instruction load. On IBM Z (s390x), the fixed CPU
+frequency reported by the kernel is used if the cycle counter is not available.
 
-- PowerPC 8/9
-- zSeries
-
-(Detection algorithms fails on above cases since routine depends on 'instruction to
-instruction' latency for simple arithmetic operations to be one cycle.)
+Otherwise, the frequency is estimated from a loop of dependent arithmetic instructions,
+assuming each of them takes one cycle. This is accurate on x86 and ARM, but not on POWER
+and IBM Z, where these instructions take more than one cycle. bench-slope prints a warning
+when falling back to this method on those architectures.
 
 Running Crypto++ benchmarks on CPU with fixed frequency of 5.5 Ghz:
 ```
@@ -194,7 +197,10 @@ Hash:
                 =
 ```
 
-The '±' value shows how much the detected frequency changed during the measurement.
+The '±' value is the estimated error of the detected frequency in Mhz. With the cycle
+counter, it is the standard error of the frequency fitted over the measurement; otherwise,
+it shows how much the frequency changed between detections before and after the
+measurement.
 
 ## Number of repetitions, --repetitions <n>
 

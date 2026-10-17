@@ -28,6 +28,14 @@
 #include <time.h>
 #include <string.h>
 #include <float.h>
+#include <math.h>
+#ifdef HAVE_LINUX_PERF_EVENT_H
+# include <linux/perf_event.h>
+# include <sys/syscall.h>
+# ifdef SYS_perf_event_open
+#  define USE_PERF_CYCLES 1
+# endif
+#endif
 
 #include "slope.h"
 
@@ -38,6 +46,8 @@
 
 
 #define AUTO_GHZ_TARGET_DIFF (5e-5)
+#define AUTO_GHZ_CYCLES_TARGET_ERR (1e-3)
+#define AUTO_GHZ_CYCLES_MAX_TRIES 5
 
 
 /* Settings parsed from command-line. */
@@ -95,7 +105,7 @@ get_time_nsec_diff (struct nsec_time *start, struct nsec_time *end)
 }
 
 
-/********************************************** Slope benchmarking framework. */
+/************************************************************** Line fitting. */
 
 static double
 safe_div (double x, double y)
@@ -118,10 +128,12 @@ safe_div (double x, double y)
 }
 
 
+/* Least squares fit of a line. *slope_stderr, if given, is set to the
+ * standard error of the returned slope. */
 static double
 get_slope (double (*const get_x) (unsigned int idx, void *priv, int is_auto_ghz),
 	   void *get_x_priv, double y_points[], unsigned int npoints,
-	   double *overhead, int is_auto_ghz)
+	   double *overhead, int is_auto_ghz, double *slope_stderr)
 {
   double sumx, sumy, sumx2, sumy2, sumxy;
   unsigned int i;
@@ -150,16 +162,304 @@ get_slope (double (*const get_x) (unsigned int idx, void *priv, int is_auto_ghz)
     }
 
   b = safe_div(npoints * sumxy - sumx * sumy, npoints * sumx2 - sumx * sumx);
+  a = safe_div(sumy - b * sumx, npoints);
 
   if (overhead)
+    *overhead = a;		/* nsecs */
+
+  if (slope_stderr)
     {
-      a = safe_div(sumy - b * sumx, npoints);
-      *overhead = a;		/* nsecs */
+      double sres = 0;
+
+      *slope_stderr = 0;
+      if (npoints > 2)
+	{
+	  for (i = 0; i < npoints; i++)
+	    {
+	      double r = y_points[i] - (a + b * get_x (i, get_x_priv,
+						       is_auto_ghz));
+	      sres += r * r;
+	    }
+	  *slope_stderr = sqrt (safe_div (sres / (npoints - 2),
+					  sumx2 - sumx * sumx / npoints));
+	}
     }
 
   return b;			/* nsecs per byte */
 }
 
+
+/******************************************************** CPU cycle counter. */
+
+/* The auto-ghz loop assumes one cycle latency for dependent integer
+ * instructions, which does not hold on POWER and IBM Z. Fitting cycles
+ * against time over the buffer sizes cancels the counter read cost. */
+
+#ifdef USE_PERF_CYCLES
+struct perf_counts
+{
+  uint64_t cycles;
+  uint64_t time_enabled;
+  uint64_t time_running;
+};
+
+static struct
+{
+  int fd;
+  int active;
+  int failed;
+  struct perf_counts start;
+  uint64_t rep_start;
+  unsigned int max_points, npoints;
+  unsigned int max_reps;
+  double *point_cycles;
+  double *point_nsecs;
+  struct perf_rep
+  {
+    double nsecs;
+    double cycles;
+  } *reps;
+} perf_cycles = { -2, };
+
+static int
+perf_cycles_read (struct perf_counts *c)
+{
+  return read (perf_cycles.fd, c, sizeof (*c)) == sizeof (*c);
+}
+
+static int
+perf_cycles_available (void)
+{
+  struct perf_event_attr attr;
+
+  if (perf_cycles.fd != -2)
+    return perf_cycles.fd >= 0;
+
+  memset (&attr, 0, sizeof (attr));
+  attr.size = sizeof (attr);
+  attr.type = PERF_TYPE_HARDWARE;
+  attr.config = PERF_COUNT_HW_CPU_CYCLES;
+  attr.exclude_kernel = 1;
+  attr.exclude_hv = 1;
+  attr.read_format = PERF_FORMAT_TOTAL_TIME_ENABLED
+		     | PERF_FORMAT_TOTAL_TIME_RUNNING;
+
+  perf_cycles.fd = syscall (SYS_perf_event_open, &attr, 0, -1, -1, 0);
+  return perf_cycles.fd >= 0;
+}
+
+static void
+perf_cycles_disable (void)
+{
+  close (perf_cycles.fd);
+  perf_cycles.fd = -1;
+}
+
+static void
+perf_measurement_begin (unsigned int npoints, unsigned int nreps)
+{
+  perf_cycles.active = 0;
+  if (!perf_cycles_available ())
+    return;
+
+  if (npoints > perf_cycles.max_points)
+    {
+      free (perf_cycles.point_cycles);
+      free (perf_cycles.point_nsecs);
+      perf_cycles.point_cycles = calloc (npoints, sizeof (double));
+      perf_cycles.point_nsecs = calloc (npoints, sizeof (double));
+      perf_cycles.max_points = npoints;
+    }
+  if (nreps > perf_cycles.max_reps)
+    {
+      free (perf_cycles.reps);
+      perf_cycles.reps = calloc (nreps, sizeof (*perf_cycles.reps));
+      perf_cycles.max_reps = nreps;
+    }
+  if (!perf_cycles.point_cycles || !perf_cycles.point_nsecs
+      || !perf_cycles.reps)
+    {
+      perf_cycles.max_points = perf_cycles.max_reps = 0;
+      return;
+    }
+
+  if (!perf_cycles_read (&perf_cycles.start))
+    {
+      perf_cycles_disable ();
+      return;
+    }
+
+  perf_cycles.npoints = 0;
+  perf_cycles.failed = 0;
+  perf_cycles.active = 1;
+}
+
+static void
+perf_repetition_begin (void)
+{
+  struct perf_counts c;
+
+  if (!perf_cycles.active)
+    return;
+  if (!perf_cycles_read (&c))
+    {
+      perf_cycles.failed = 1;
+      return;
+    }
+  perf_cycles.rep_start = c.cycles;
+}
+
+static void
+perf_repetition_end (unsigned int rep)
+{
+  struct perf_counts c;
+
+  if (!perf_cycles.active)
+    return;
+  if (!perf_cycles_read (&c))
+    {
+      perf_cycles.failed = 1;
+      return;
+    }
+  perf_cycles.reps[rep].cycles = c.cycles - perf_cycles.rep_start;
+}
+
+static int
+perf_rep_cmp (const void *_a, const void *_b)
+{
+  const struct perf_rep *a = _a, *b = _b;
+
+  return (a->nsecs > b->nsecs) - (a->nsecs < b->nsecs);
+}
+
+/* Records the mean of the middle half of the repetitions ordered by time;
+ * nsecs[] holds the times of the repetitions in the order they were run. */
+static void
+perf_measurement_point (const double *nsecs, unsigned int nreps)
+{
+  struct perf_rep *reps = perf_cycles.reps;
+  unsigned int i, lo, hi;
+  double cycles = 0, ns = 0;
+
+  if (!perf_cycles.active || perf_cycles.npoints >= perf_cycles.max_points)
+    return;
+
+  for (i = 0; i < nreps; i++)
+    reps[i].nsecs = nsecs[i];
+  qsort (reps, nreps, sizeof (*reps), perf_rep_cmp);
+
+  lo = nreps / 4;
+  hi = nreps - nreps / 4;
+  for (i = lo; i < hi; i++)
+    {
+      cycles += reps[i].cycles;
+      ns += reps[i].nsecs;
+    }
+
+  perf_cycles.point_cycles[perf_cycles.npoints] = cycles / (hi - lo);
+  perf_cycles.point_nsecs[perf_cycles.npoints] = ns / (hi - lo);
+  perf_cycles.npoints++;
+}
+
+static double
+perf_point_x (unsigned int idx, void *priv, int is_auto_ghz)
+{
+  const double *nsecs = priv;
+
+  (void)is_auto_ghz;
+  return nsecs[idx];
+}
+
+/* Returns frequency in GHz and its relative standard error, or 0 if the
+ * counter did not count during the measurement. */
+static double
+perf_measurement_end (double *rel_err)
+{
+  unsigned int n = perf_cycles.npoints;
+  struct perf_counts end;
+  double ghz, ghz_stderr;
+
+  *rel_err = 0;
+  if (!perf_cycles.active)
+    return 0;
+  perf_cycles.active = 0;
+
+  if (perf_cycles.failed || !perf_cycles_read (&end))
+    {
+      perf_cycles_disable ();
+      return 0;
+    }
+
+  /* On hybrid CPUs the generic cycles event belongs to the PMU of one core
+   * type and does not count while running on the others; the counter may
+   * also be multiplexed with other events. */
+  if (end.time_running - perf_cycles.start.time_running
+      != end.time_enabled - perf_cycles.start.time_enabled)
+    {
+      perf_cycles_disable ();
+      return 0;
+    }
+
+  /* Counter runs but does not count, e.g. in some VMs. */
+  if (end.cycles == perf_cycles.start.cycles)
+    {
+      perf_cycles_disable ();
+      return 0;
+    }
+
+  if (n < 3)
+    return 0;
+
+  ghz = get_slope (&perf_point_x, perf_cycles.point_nsecs,
+		   perf_cycles.point_cycles, n, NULL, 0, &ghz_stderr);
+  if (ghz <= 0)
+    return 0;
+
+  *rel_err = ghz_stderr / ghz;
+  return ghz;
+}
+#else
+static int
+perf_cycles_available (void)
+{
+  return 0;
+}
+
+static void
+perf_measurement_begin (unsigned int npoints, unsigned int nreps)
+{
+  (void)npoints;
+  (void)nreps;
+}
+
+static void
+perf_repetition_begin (void)
+{
+}
+
+static void
+perf_repetition_end (unsigned int rep)
+{
+  (void)rep;
+}
+
+static void
+perf_measurement_point (const double *nsecs, unsigned int nreps)
+{
+  (void)nsecs;
+  (void)nreps;
+}
+
+static double
+perf_measurement_end (double *rel_err)
+{
+  *rel_err = 0;
+  return 0;
+}
+#endif
+
+
+/********************************************** Slope benchmarking framework. */
 
 static void
 prepare_raw_data (double (*const get_x) (unsigned int idx, void *priv, int is_auto_ghz),
@@ -290,15 +590,19 @@ do_bench_obj_measurement (struct bench_obj *obj, void *buffer, size_t buflen,
 
   for (rep = 0; rep < num_repetitions; rep++)
     {
+      perf_repetition_begin ();
       get_nsec_time (&start);
 
       for (loop = 0; loop < loop_iterations; loop++)
 	do_run (obj, buffer, buflen);
 
       get_nsec_time (&end);
+      perf_repetition_end (rep);
 
       measurement_raw[rep] = get_time_nsec_diff (&start, &end);
     }
+
+  perf_measurement_point (measurement_raw, num_repetitions);
 
   /* Return median of repeated measurements. */
   qsort (measurement_raw, num_repetitions, sizeof (measurement_raw[0]),
@@ -385,9 +689,12 @@ get_next_bufsize (struct bench_obj *obj, size_t curr_bufsize, int is_auto_ghz)
 }
 
 
-/* Benchmark and return linear regression slope in nanoseconds per byte.  */
+/* Benchmark and return linear regression slope in nanoseconds per byte.
+ * *cycles_ghz is set to the frequency measured with the cycle counter, or to
+ * 0 if not available. */
 static double
-slope_benchmark (struct bench_obj *obj, int is_auto_ghz)
+slope_benchmark (struct bench_obj *obj, int is_auto_ghz, double *cycles_ghz,
+		 double *cycles_ghz_err)
 {
   unsigned int num_repetitions;
   unsigned int num_measurements;
@@ -399,6 +706,9 @@ slope_benchmark (struct bench_obj *obj, int is_auto_ghz)
   unsigned char *buffer;
   size_t cur_bufsize;
   int err;
+
+  *cycles_ghz = 0;
+  *cycles_ghz_err = 0;
 
   err = obj->ops->initialize (obj);
   if (err < 0)
@@ -447,6 +757,8 @@ slope_benchmark (struct bench_obj *obj, int is_auto_ghz)
 							      is_auto_ghz);
 
   /* Perform measurements */
+  if (settings.auto_ghz)
+    perf_measurement_begin (num_measurements, num_repetitions);
   for (midx = 0, cur_bufsize = get_start_bufsize(obj, is_auto_ghz);
        cur_bufsize <= get_max_bufsize(obj, is_auto_ghz);
        cur_bufsize = get_next_bufsize(obj, cur_bufsize, is_auto_ghz), midx++)
@@ -456,12 +768,13 @@ slope_benchmark (struct bench_obj *obj, int is_auto_ghz)
 				  loop_iterations, is_auto_ghz);
       measurements[midx] /= loop_iterations;
     }
+  *cycles_ghz = perf_measurement_end (cycles_ghz_err);
 
   assert (midx == num_measurements);
 
   slope =
     get_slope (&get_bench_obj_point_x, obj, measurements, num_measurements,
-	       &overhead, is_auto_ghz);
+	       &overhead, is_auto_ghz, NULL);
 
   prepare_raw_data (&get_bench_obj_point_x, obj, measurements,
 		    num_measurements, is_auto_ghz);
@@ -587,20 +900,150 @@ static struct bench_ops auto_ghz_detect_ops = {
 };
 
 
+#if defined(__s390x__) && defined(__linux__)
+/* IBM Z runs at fixed frequency, which the kernel reports.
+ * Returns 0 if not available. */
+static double
+get_cpuinfo_ghz (void)
+{
+  static double ghz = -1;
+  char line[256];
+  double mhz;
+  FILE *fp;
+
+  if (ghz >= 0)
+    return ghz;
+
+  ghz = 0;
+  fp = fopen ("/proc/cpuinfo", "r");
+  if (!fp)
+    return ghz;
+
+  while (fgets (line, sizeof (line), fp))
+    if (sscanf (line, "cpu MHz dynamic : %lf", &mhz) == 1 && mhz > 0)
+      {
+	ghz = mhz / 1000;
+	break;
+      }
+
+  fclose (fp);
+  return ghz;
+}
+#endif
+
 double
 get_auto_ghz (void)
 {
   struct bench_obj obj = { 0 };
   double nsecs_per_iteration;
+  double ghz, ghz_err;
 
   obj.ops = &auto_ghz_detect_ops;
 
-  nsecs_per_iteration = slope_benchmark (&obj, 1);
+#if defined(__s390x__) && defined(__linux__)
+  if (!perf_cycles_available ())
+    {
+      ghz = get_cpuinfo_ghz ();
+      if (ghz > 0)
+	return ghz;
+    }
+#endif
+
+  nsecs_per_iteration = slope_benchmark (&obj, 1, &ghz, &ghz_err);
   if (nsecs_per_iteration <= 0)
     return -1;
+  if (ghz > 0)
+    return ghz;
+
+#if defined(__powerpc__) || defined(__s390__)
+  {
+    static int warned;
+
+    if (!warned)
+      fprintf (stderr, "warning: CPU frequency auto-detection is not "
+	       "reliable on this architecture without access to the "
+	       "hardware cycle counter (see perf_event_paranoid).\n");
+    warned = 1;
+  }
+#endif
 
   /* One iteration takes 1024 cycles. */
   return 1024 / nsecs_per_iteration;
+}
+
+
+/* Measures frequency with the cycle counter during the benchmark itself.
+ * Sets settings.bench_ghz to 0 if the counter did not count. */
+static double
+cycles_ghz_slope_benchmark (struct bench_obj *obj)
+{
+  unsigned int try_count = 0;
+  double ghz, ghz_err;
+  double ret;
+  double best_ret = -1, best_ghz = 0, best_ghz_err = 0;
+
+  /* Bring the CPU up to its operating frequency first. */
+  get_auto_ghz ();
+
+  do
+    {
+      ret = slope_benchmark (obj, 0, &ghz, &ghz_err);
+      if (ret > 0 && ghz > 0 && (best_ret <= 0 || ghz_err < best_ghz_err))
+	{
+	  best_ret = ret;
+	  best_ghz = ghz;
+	  best_ghz_err = ghz_err;
+	}
+    }
+  while ((ret <= 0 || ghz_err > AUTO_GHZ_CYCLES_TARGET_ERR) && ghz > 0
+	 && ++try_count < AUTO_GHZ_CYCLES_MAX_TRIES);
+
+  settings.bench_ghz = best_ghz;
+  settings.bench_ghz_diff = best_ghz_err;
+  return best_ret;
+}
+
+
+/* Detects frequency before and after the benchmark, repeating until they
+ * match. */
+static double
+separate_ghz_slope_benchmark (struct bench_obj *obj)
+{
+  double target_diff = AUTO_GHZ_TARGET_DIFF;
+  double cpu_auto_ghz_before;
+  double cpu_auto_ghz_after;
+  double nsecs_per_iteration;
+  double ghz, ghz_err;
+  unsigned int try_count = 0;
+  double diff;
+
+  do
+    {
+      /* Repeat measurement until CPU turbo frequency has stabilized. */
+
+      if ((++try_count % 4) == 0)
+	{
+	  /* Too much frequency instability on the system, relax target
+	   * accuracy. */
+	  target_diff *= 2;
+	}
+
+      cpu_auto_ghz_before = get_auto_ghz ();
+
+      nsecs_per_iteration = slope_benchmark (obj, 0, &ghz, &ghz_err);
+
+      cpu_auto_ghz_after = get_auto_ghz ();
+
+      diff = 1.0 - safe_div(cpu_auto_ghz_before, cpu_auto_ghz_after);
+      diff = diff < 0 ? -diff : diff;
+    }
+  while ((nsecs_per_iteration <= 0 || cpu_auto_ghz_before <= 0
+	  || cpu_auto_ghz_after <= 0 || diff > target_diff)
+	 && try_count < 1000);
+
+  settings.bench_ghz = (cpu_auto_ghz_before + cpu_auto_ghz_after) / 2;
+  settings.bench_ghz_diff = diff;
+  return nsecs_per_iteration;
 }
 
 
@@ -608,6 +1051,7 @@ double
 do_slope_benchmark (struct bench_obj *obj)
 {
   unsigned int try_count = 0;
+  double ghz, ghz_err;
   double ret;
 
   if (!settings.auto_ghz)
@@ -615,54 +1059,23 @@ do_slope_benchmark (struct bench_obj *obj)
       /* Perform measurement without autodetection of CPU frequency. */
       do
         {
-	  ret = slope_benchmark (obj, 0);
+	  ret = slope_benchmark (obj, 0, &ghz, &ghz_err);
         }
       while (ret <= 0 && try_count++ <= 4);
 
       settings.bench_ghz = settings.cpu_ghz;
       settings.bench_ghz_diff = 0;
+      return ret;
     }
-  else
+
+  if (perf_cycles_available ())
     {
-      double target_diff = AUTO_GHZ_TARGET_DIFF;
-      double cpu_auto_ghz_before;
-      double cpu_auto_ghz_after;
-      double nsecs_per_iteration;
-      double diff;
-
-      /* Perform measurement with CPU frequency autodetection. */
-
-      do
-        {
-          /* Repeat measurement until CPU turbo frequency has stabilized. */
-
-	  if ((++try_count % 4) == 0)
-	    {
-	      /* Too much frequency instability on the system, relax target
-	       * accuracy. */
-	      target_diff *= 2;
-	    }
-
-          cpu_auto_ghz_before = get_auto_ghz ();
-
-          nsecs_per_iteration = slope_benchmark (obj, 0);
-
-          cpu_auto_ghz_after = get_auto_ghz ();
-
-          diff = 1.0 - safe_div(cpu_auto_ghz_before, cpu_auto_ghz_after);
-          diff = diff < 0 ? -diff : diff;
-        }
-      while ((nsecs_per_iteration <= 0 || cpu_auto_ghz_before <= 0
-	      || cpu_auto_ghz_after <= 0 || diff > target_diff)
-	     && try_count < 1000);
-
-      ret = nsecs_per_iteration;
-
-      settings.bench_ghz = (cpu_auto_ghz_before + cpu_auto_ghz_after) / 2;
-      settings.bench_ghz_diff = diff;
+      ret = cycles_ghz_slope_benchmark (obj);
+      if (ret > 0 && settings.bench_ghz > 0)
+	return ret;
     }
 
-  return ret;
+  return separate_ghz_slope_benchmark (obj);
 }
 
 
@@ -774,10 +1187,10 @@ bench_print_result_csv (double nsecs_per_byte)
       cycles_per_byte = nsecs_per_byte * bench_ghz;
       double_to_str (cpbyte_buf, sizeof (cpbyte_buf), cycles_per_byte);
       double_to_str (mhz_buf, sizeof (mhz_buf), bench_ghz * 1000);
-      if (settings.auto_ghz && settings.bench_ghz_diff * 1000 >= 0.1)
+      if (settings.auto_ghz && settings.bench_ghz_diff * bench_ghz * 1000 >= 0.1)
 	{
 	  snprintf(mhz_diff_buf, sizeof(mhz_diff_buf), ",%.1f,Mhz-diff",
-		   settings.bench_ghz_diff * 1000);
+		   settings.bench_ghz_diff * bench_ghz * 1000);
 	}
     }
 
@@ -831,10 +1244,10 @@ bench_print_result_std (double nsecs_per_byte)
       cycles_per_byte = nsecs_per_byte * bench_ghz;
       double_to_str (cpbyte_buf, sizeof (cpbyte_buf), cycles_per_byte);
       double_to_str (mhz_buf, sizeof (mhz_buf), bench_ghz * 1000);
-      if (settings.auto_ghz && settings.bench_ghz_diff * 1000 >= 0.1)
+      if (settings.auto_ghz && settings.bench_ghz_diff * bench_ghz * 1000 >= 0.1)
 	{
 	  snprintf(mhz_diff_buf, sizeof(mhz_diff_buf), "±%.1f",
-		   settings.bench_ghz_diff * 1000);
+		   settings.bench_ghz_diff * bench_ghz * 1000);
 	}
     }
   else

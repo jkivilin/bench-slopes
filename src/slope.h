@@ -84,7 +84,7 @@ struct slope_settings
 
   /* Currently auto-detected CPU ghz. */
   double bench_ghz;
-  /* Current accuracy of auto-detected CPU ghz. */
+  /* Relative accuracy of auto-detected CPU ghz. */
   double bench_ghz_diff;
 };
 
